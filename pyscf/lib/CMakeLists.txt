@@ -144,7 +144,7 @@ option(BUILD_XCFUN "Download and build xcfun library" ON)
 if(NOT DISABLE_DFT)
 #if(NOT EXISTS "${PROJECT_SOURCE_DIR}/deps/include/xc.h" AND
 #    ENABLE_LIBXC AND BUILD_LIBXC)
-#if(ENABLE_LIBXC AND BUILD_LIBXC)
+if(ENABLE_LIBXC AND BUILD_LIBXC)
   ExternalProject_Add(libxc
     URL http://www.tddft.org/programs/libxc/down.php?file=5.0.0/libxc-5.0.0.tar.gz
     # Range seperated parameters can be set in the python code. This patch to
@@ -156,7 +156,7 @@ if(NOT DISABLE_DFT)
             -DENABLE_XHOST=OFF -DDISABLE_KXC=OFF -DDISABLE_LXC=OFF
             -DCMAKE_INSTALL_PREFIX:PATH=<INSTALL_DIR>
     )
-#endif() # ENABLE_LIBXC
+endif() # ENABLE_LIBXC
 
 #if(NOT EXISTS "${PROJECT_SOURCE_DIR}/deps/include/xcfun.h" AND
 #    ENABLE_XCFUN AND BUILD_XCFUN)
