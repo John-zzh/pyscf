@@ -873,6 +873,9 @@ H     0    0.757    0.587'''
         opt = mf.init_direct_scf()
         shls = i, j, k, l = 0, 2, 3, 3
         q = opt.q_cond
+        print(mol.intor_by_shell('int2e', shls).ravel()[0])
+        print(q[i,j])
+        print(q[k,l])
         self.assertTrue(mol.intor_by_shell('int2e', shls).ravel()[0] < q[i,j] * q[k,l])
 
         mol = gto.M(atom='''
