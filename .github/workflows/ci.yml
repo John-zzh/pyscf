@@ -60,6 +60,8 @@ jobs:
                 cmake -DBUILD_LIBXC=OFF -DBUILD_XCFUN=OFF ..
                 make
                 cd ../..
+                ls lib
+                ldd lib/libxc_itrf.so
 
       - name: Before Test
         working-directory: ./pyscf
