@@ -363,8 +363,7 @@ def analyze(tdobj, verbose=None):
 
     if mol.symmetry:
         orbsym = hf_symm.get_orbsym(mol, mo_coeff)
-        orbsym_in_d2h = numpy.asarray(orbsym) % 10  # convert to D2h irreps
-        x_sym = (orbsym_in_d2h[mo_occ==2,None] ^ orbsym_in_d2h[mo_occ==0]).ravel()
+        x_sym = symm.direct_prod(orbsym[mo_occ==2], orbsym[mo_occ==0], mol.groupname)
     else:
         x_sym = None
 
@@ -375,8 +374,15 @@ def analyze(tdobj, verbose=None):
             log.note('Excited State %3d: %12.5f eV %9.2f nm  f=%.4f',
                      i+1, e_ev[i], wave_length[i], f_oscillator[i])
         else:
-            wfnsym_id = x_sym[abs(x).argmax()]
-            wfnsym = symm.irrep_id2name(mol.groupname, wfnsym_id)
+            possible_sym = x_sym[(x > 1e-7) | (x < -1e-7)]
+            if numpy.all(possible_sym == symm.MULTI_IRREPS):
+                wfnsym = '???'
+            else:
+                ids = numpy.unique(possible_sym[possible_sym != symm.MULTI_IRREPS])
+                if ids.size == 1:
+                    wfnsym = symm.irrep_id2name(mol.groupname, ids[0])
+                else:
+                    wfnsym = '???'
             log.note('Excited State %3d: %4s %12.5f eV %9.2f nm  f=%.4f',
                      i+1, wfnsym, e_ev[i], wave_length[i], f_oscillator[i])
 
@@ -745,11 +751,16 @@ class TDA(lib.StreamObject):
             e_ia[(orbsym_in_d2h[occidx,None] ^ orbsym_in_d2h[viridx]) != wfnsym] = 1e99
 
         nov = e_ia.size
-        nroot = min(nstates, nov)
-        x0 = numpy.zeros((nroot, nov))
-        idx = numpy.argsort(e_ia.ravel())
-        for i in range(nroot):
-            x0[i,idx[i]] = 1  # Koopmans' excitations
+        nstates = min(nstates, nov)
+        e_ia = e_ia.ravel()
+        e_threshold = e_ia[numpy.argsort(e_ia)[nstates-1]]
+        # Handle degeneracy, include all degenerated states in initial guess
+        e_threshold += 1e-6
+
+        idx = numpy.where(e_ia <= e_threshold)[0]
+        x0 = numpy.zeros((idx.size, nov))
+        for i, j in enumerate(idx):
+            x0[i, j] = 1  # Koopmans' excitations
         return x0
 
     def kernel(self, x0=None, nstates=None):

@@ -504,8 +504,7 @@ def analyze(tdobj, verbose=None):
 
     if mol.symmetry:
         orbsyma, orbsymb = uhf_symm.get_orbsym(mol, mo_coeff)
-        orbsyma = orbsyma % 10
-        x_syma = (orbsyma[mo_occ[0]==1,None] ^ orbsyma[mo_occ[0]==0]).ravel()
+        x_syma = symm.direct_prod(orbsyma[mo_occ[0]==1], orbsyma[mo_occ[0]==0], mol.groupname)
     else:
         x_syma = None
 
@@ -516,8 +515,15 @@ def analyze(tdobj, verbose=None):
             log.note('Excited State %3d: %12.5f eV %9.2f nm  f=%.4f',
                      i+1, e_ev[i], wave_length[i], f_oscillator[i])
         else:
-            wfnsym_id = x_syma[abs(x[0]).argmax()]
-            wfnsym = symm.irrep_id2name(mol.groupname, wfnsym_id)
+            possible_sym = x_syma[(x[0] > 1e-7) | (x[0] < -1e-7)]
+            if numpy.all(possible_sym == symm.MULTI_IRREPS):
+                wfnsym = '???'
+            else:
+                ids = numpy.unique(possible_sym[possible_sym != symm.MULTI_IRREPS])
+                if ids.size == 1:
+                    wfnsym = symm.irrep_id2name(mol.groupname, ids[0])
+                else:
+                    wfnsym = '???'
             log.note('Excited State %3d: %4s %12.5f eV %9.2f nm  f=%.4f',
                      i+1, wfnsym, e_ev[i], wave_length[i], f_oscillator[i])
 
@@ -639,11 +645,15 @@ class TDA(rhf.TDA):
 
         e_ia = numpy.hstack((e_ia_a.ravel(), e_ia_b.ravel()))
         nov = e_ia.size
-        nroot = min(nstates, nov)
-        x0 = numpy.zeros((nroot, nov))
-        idx = numpy.argsort(e_ia)
-        for i in range(nroot):
-            x0[i,idx[i]] = 1  # lowest excitations
+        nstates = min(nstates, nov)
+        e_threshold = e_ia[numpy.argsort(e_ia)[nstates-1]]
+        # Handle degeneracy
+        e_threshold += 1e-6
+
+        idx = numpy.where(e_ia <= e_threshold)[0]
+        x0 = numpy.zeros((idx.size, nov))
+        for i, j in enumerate(idx):
+            x0[i, j] = 1  # Koopmans' excitations
         return x0
 
     def kernel(self, x0=None, nstates=None):
