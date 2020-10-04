@@ -130,6 +130,7 @@ def update_amps(mp, t2, eris):
     t2new  = lib.einsum('ijac,bc->ijab', t2, fvv)
     t2new -= lib.einsum('ki,kjab->ijab', foo, t2)
     t2new = t2new + t2new.transpose(1,0,3,2)
+    print('ERI t2new', sum(t2new))
 
     eris_ovov = numpy.asarray(eris.ovov).reshape(nocc,nvir,nocc,nvir)
     t2new += eris_ovov.conj().transpose(0,2,1,3)

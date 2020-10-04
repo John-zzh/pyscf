@@ -269,11 +269,14 @@ class DF(lib.StreamObject):
                iden_coeffs(mo_coeffs[1], mo_coeffs[3]))
         Lij = Lkl = None
         for eri1 in self.loop():
+            print('ERI1 0000', sum(eri1))
             Lij = _ao2mo.nr_e2(eri1, moij, ijslice, aosym='s2', mosym=ijmosym, out=Lij)
+            print('ERI1 Lij', sum(Lij))
             if sym:
                 Lkl = Lij
             else:
                 Lkl = _ao2mo.nr_e2(eri1, mokl, klslice, aosym='s2', mosym=klmosym, out=Lkl)
+            print('ERI1 Lkl', sum(Lkl))
             lib.dot(Lij.T, Lkl, 1, mo_eri, 1)
         return mo_eri
     get_mo_eri = ao2mo
