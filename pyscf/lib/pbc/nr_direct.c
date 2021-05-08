@@ -24,13 +24,14 @@
 #include "cint.h"
 #include "cint_funcs.h"
 #include "vhf/nr_direct.h"
+#include "pbc/pbc.h"
 
 #define MIN(I,J)        ((I) < (J) ? (I) : (J))
 #define MAX(I,J)        ((I) > (J) ? (I) : (J))
 
 int GTOmax_shell_dim(const int *ao_loc, const int *shls_slice, int ncenter);
 
-static int _max_cache_size(int (*intor)(), int *shls_slice, int *images_loc,
+static int _max_cache_size(int (*intor)(), int *shls_slice, int *sh_loc,
                            int *atm, int natm, int *bas, int nbas, double *env)
 {
         int i, n;
@@ -39,17 +40,17 @@ static int _max_cache_size(int (*intor)(), int *shls_slice, int *images_loc,
         int shls[4];
         int cache_size = 0;
         for (i = i0; i < i1; i++) {
-                shls[0] = images_loc[i];
-                shls[1] = images_loc[i];
-                shls[2] = images_loc[i];
-                shls[3] = images_loc[i];
+                shls[0] = sh_loc[i];
+                shls[1] = sh_loc[i];
+                shls[2] = sh_loc[i];
+                shls[3] = sh_loc[i];
                 n = (*intor)(NULL, NULL, shls, atm, natm, bas, nbas, env, NULL, NULL);
                 cache_size = MAX(cache_size, n);
         }
         return cache_size;
 }
 
-static int _assemble_eris(double *eri_buf, int *images_loc,
+static int _assemble_eris(double *eri_buf, int *sh_loc,
                           int ishell, int jshell, int kshell, int lshell,
                           double cutoff, CVHFOpt *vhfopt, IntorEnvs *envs)
 {
@@ -61,13 +62,13 @@ static int _assemble_eris(double *eri_buf, int *images_loc,
         CINTOpt *cintopt = envs->cintopt;
         const size_t Nbas = nbas;
         const int *ao_loc = envs->ao_loc;
-        const int ish0 = images_loc[ishell];
-        const int jsh0 = images_loc[jshell];
-        const int ksh0 = images_loc[kshell];
-        const int lsh0 = images_loc[lshell];
-        const int jsh1 = images_loc[jshell+1];
-        const int ksh1 = images_loc[kshell+1];
-        const int lsh1 = images_loc[lshell+1];
+        const int ish0 = sh_loc[ishell];
+        const int jsh0 = sh_loc[jshell];
+        const int ksh0 = sh_loc[kshell];
+        const int lsh0 = sh_loc[lshell];
+        const int jsh1 = sh_loc[jshell+1];
+        const int ksh1 = sh_loc[kshell+1];
+        const int lsh1 = sh_loc[lshell+1];
         const int i0 = ao_loc[ishell];
         const int j0 = ao_loc[jshell];
         const int k0 = ao_loc[kshell];
@@ -136,21 +137,25 @@ static int _assemble_eris(double *eri_buf, int *images_loc,
 }
 
 void PBCVHF_contract_k_s1(double *vk, double *dms, double *buf,
-                          int n_dm, int nkpts, int nbands, int nbasp,
                           int ish, int jsh, int ksh, int lsh,
-                          int *bvk_cell_id, int *cell0_shl_id,
-                          int *images_loc, int *dm_translation,
-                          CVHFOpt *vhfopt, IntorEnvs *envs)
+                          int n_dm, int *dm_translation,
+                          CVHFOpt *vhfopt, IntorEnvs *envs, BVKEnvs *e_bvk)
 {
-        const int cell_j = bvk_cell_id[jsh];
-        const int cell_k = bvk_cell_id[ksh];
-        const int cell_l = bvk_cell_id[lsh];
-        const int jshp = cell0_shl_id[jsh];
-        const int kshp = cell0_shl_id[ksh];
-        const int lshp = cell0_shl_id[lsh];
-        const int dm_jk_off = dm_translation[cell_j * nkpts + cell_k];
-        const size_t Nbasp = nbasp;
-        const size_t nn0 = Nbasp * Nbasp;
+        int bvk_ncells = e_bvk->ncells;
+        int nbands = e_bvk->nbands;
+        int nbasp = e_bvk->nbasp;
+        int *bvk_cell_id = e_bvk->cell_id;
+        int *cell0_shl_id = e_bvk->cell0_shl_id;
+        int *sh_loc = e_bvk->sh_loc;
+        int cell_j = bvk_cell_id[jsh];
+        int cell_k = bvk_cell_id[ksh];
+        int cell_l = bvk_cell_id[lsh];
+        int jshp = cell0_shl_id[jsh];  // shell id in primitive cell
+        int kshp = cell0_shl_id[ksh];  // shell id in primitive cell
+        int lshp = cell0_shl_id[lsh];  // shell id in primitive cell
+        int dm_jk_off = dm_translation[cell_j * bvk_ncells + cell_k];
+        size_t Nbasp = nbasp;
+        size_t nn0 = Nbasp * Nbasp;
         double direct_scf_cutoff = vhfopt->direct_scf_cutoff;
         double dm_jk_cond = vhfopt->dm_cond[dm_jk_off*nn0 + jshp*Nbasp+kshp];
         if (dm_jk_cond < direct_scf_cutoff) {
@@ -158,25 +163,25 @@ void PBCVHF_contract_k_s1(double *vk, double *dms, double *buf,
         } else {
                 direct_scf_cutoff /= dm_jk_cond;
         }
-        if (!_assemble_eris(buf, images_loc, ish, jsh, ksh, lsh,
+        if (!_assemble_eris(buf, sh_loc, ish, jsh, ksh, lsh,
                             direct_scf_cutoff, vhfopt, envs)) {
                 return;
         }
 
-        const int *ao_loc = envs->ao_loc;
-        const size_t naop = ao_loc[nbasp];
-        const size_t nn = naop * naop;
-        const size_t bn = naop * nbands;
-        const size_t knn = nn * nkpts;
-        const size_t bnn = bn * naop;
-        const int i0  = ao_loc[ish];
-        const int jp0 = ao_loc[jshp];
-        const int kp0 = ao_loc[kshp];
-        const int lp0 = ao_loc[lshp];
-        const int i1  = ao_loc[ish+1];
-        const int jp1 = ao_loc[jshp+1];
-        const int kp1 = ao_loc[kshp+1];
-        const int lp1 = ao_loc[lshp+1];
+        int *ao_loc = envs->ao_loc;
+        size_t naop = ao_loc[nbasp];
+        size_t nn = naop * naop;
+        size_t bn = naop * nbands;
+        size_t knn = nn * bvk_ncells;
+        size_t bnn = bn * naop;
+        int i0  = ao_loc[ish];
+        int jp0 = ao_loc[jshp];
+        int kp0 = ao_loc[kshp];
+        int lp0 = ao_loc[lshp];
+        int i1  = ao_loc[ish+1];
+        int jp1 = ao_loc[jshp+1];
+        int kp1 = ao_loc[kshp+1];
+        int lp1 = ao_loc[lshp+1];
         int idm, i, jp, kp, lp, n;
         double sjk, qijkl;
         double *dm_jk;
@@ -199,22 +204,26 @@ void PBCVHF_contract_k_s1(double *vk, double *dms, double *buf,
 }
 
 static void contract_k_s2_kgtl(double *vk, double *dms, double *buf,
-                          int n_dm, int nkpts, int nbands, int nbasp,
-                          int ish, int jsh, int ksh, int lsh,
-                          int *bvk_cell_id, int *cell0_shl_id,
-                          int *images_loc, int *dm_translation,
-                          CVHFOpt *vhfopt, IntorEnvs *envs)
+                               int ish, int jsh, int ksh, int lsh,
+                               int n_dm, int *dm_translation,
+                               CVHFOpt *vhfopt, IntorEnvs *envs, BVKEnvs *e_bvk)
 {
-        const int cell_j = bvk_cell_id[jsh];
-        const int cell_k = bvk_cell_id[ksh];
-        const int cell_l = bvk_cell_id[lsh];
-        const int jshp = cell0_shl_id[jsh];
-        const int kshp = cell0_shl_id[ksh];
-        const int lshp = cell0_shl_id[lsh];
-        const int dm_jk_off = dm_translation[cell_j*nkpts+cell_k];
-        const int dm_jl_off = dm_translation[cell_j*nkpts+cell_l];
-        const size_t Nbasp = nbasp;
-        const size_t nn0 = Nbasp * Nbasp;
+        int bvk_ncells = e_bvk->ncells;
+        int nbands = e_bvk->nbands;
+        int nbasp = e_bvk->nbasp;
+        int *bvk_cell_id = e_bvk->cell_id;
+        int *cell0_shl_id = e_bvk->cell0_shl_id;
+        int *sh_loc = e_bvk->sh_loc;
+        int cell_j = bvk_cell_id[jsh];
+        int cell_k = bvk_cell_id[ksh];
+        int cell_l = bvk_cell_id[lsh];
+        int jshp = cell0_shl_id[jsh];
+        int kshp = cell0_shl_id[ksh];
+        int lshp = cell0_shl_id[lsh];
+        int dm_jk_off = dm_translation[cell_j*bvk_ncells+cell_k];
+        int dm_jl_off = dm_translation[cell_j*bvk_ncells+cell_l];
+        size_t Nbasp = nbasp;
+        size_t nn0 = Nbasp * Nbasp;
         double direct_scf_cutoff = vhfopt->direct_scf_cutoff;
         double dm_jk_cond = vhfopt->dm_cond[dm_jk_off*nn0 + jshp*Nbasp+kshp];
         double dm_jl_cond = vhfopt->dm_cond[dm_jl_off*nn0 + jshp*Nbasp+lshp];
@@ -224,25 +233,25 @@ static void contract_k_s2_kgtl(double *vk, double *dms, double *buf,
         } else {
                 direct_scf_cutoff /= dm_cond_max;
         }
-        if (!_assemble_eris(buf, images_loc, ish, jsh, ksh, lsh,
+        if (!_assemble_eris(buf, sh_loc, ish, jsh, ksh, lsh,
                             direct_scf_cutoff, vhfopt, envs)) {
                 return;
         }
 
-        const int *ao_loc = envs->ao_loc;
-        const size_t naop = ao_loc[nbasp];
-        const size_t nn = naop * naop;
-        const size_t bn = naop * nbands;
-        const size_t knn = nn * nkpts;
-        const size_t bnn = bn * naop;
-        const int i0  = ao_loc[ish];
-        const int jp0 = ao_loc[jshp];
-        const int kp0 = ao_loc[kshp];
-        const int lp0 = ao_loc[lshp];
-        const int i1  = ao_loc[ish+1];
-        const int jp1 = ao_loc[jshp+1];
-        const int kp1 = ao_loc[kshp+1];
-        const int lp1 = ao_loc[lshp+1];
+        int *ao_loc = envs->ao_loc;
+        size_t naop = ao_loc[nbasp];
+        size_t nn = naop * naop;
+        size_t bn = naop * nbands;
+        size_t knn = nn * bvk_ncells;
+        size_t bnn = bn * naop;
+        int i0  = ao_loc[ish];
+        int jp0 = ao_loc[jshp];
+        int kp0 = ao_loc[kshp];
+        int lp0 = ao_loc[lshp];
+        int i1  = ao_loc[ish+1];
+        int jp1 = ao_loc[jshp+1];
+        int kp1 = ao_loc[kshp+1];
+        int lp1 = ao_loc[lshp+1];
         int idm, i, jp, kp, lp, n;
         double sjk, sjl, qijkl;
         double *dm_jk, *dm_jl;
@@ -270,41 +279,39 @@ static void contract_k_s2_kgtl(double *vk, double *dms, double *buf,
 }
 
 void PBCVHF_contract_k_s2kl(double *vk, double *dms, double *buf,
-                            int n_dm, int nkpts, int nbands, int nbasp,
                             int ish, int jsh, int ksh, int lsh,
-                            int *bvk_cell_id, int *cell0_shl_id,
-                            int *images_loc, int *dm_translation,
-                            CVHFOpt *vhfopt, IntorEnvs *envs)
+                            int n_dm, int *dm_translation,
+                            CVHFOpt *vhfopt, IntorEnvs *envs, BVKEnvs *e_bvk)
 {
         if (ksh > lsh) {
-                contract_k_s2_kgtl(vk, dms, buf, n_dm, nkpts, nbands, nbasp,
-                                   ish, jsh, ksh, lsh, bvk_cell_id,
-                                   cell0_shl_id, images_loc,
-                                   dm_translation, vhfopt, envs);
+                contract_k_s2_kgtl(vk, dms, buf, ish, jsh, ksh, lsh, n_dm,
+                                   dm_translation, vhfopt, envs, e_bvk);
         } else if (ksh == lsh) {
-                PBCVHF_contract_k_s1(vk, dms, buf, n_dm, nkpts, nbands, nbasp,
-                                     ish, jsh, ksh, lsh, bvk_cell_id,
-                                     cell0_shl_id, images_loc,
-                                     dm_translation, vhfopt, envs);
+                PBCVHF_contract_k_s1(vk, dms, buf, ish, jsh, ksh, lsh, n_dm,
+                                     dm_translation, vhfopt, envs, e_bvk);
         }
 }
 
 void PBCVHF_contract_j_s1(double *vj, double *dms, double *buf,
-                          int n_dm, int nkpts, int nbands, int nbasp,
                           int ish, int jsh, int ksh, int lsh,
-                          int *bvk_cell_id, int *cell0_shl_id,
-                          int *images_loc, int *dm_translation,
-                          CVHFOpt *vhfopt, IntorEnvs *envs)
+                          int n_dm, int *dm_translation,
+                          CVHFOpt *vhfopt, IntorEnvs *envs, BVKEnvs *e_bvk)
 {
-        const int cell_j = bvk_cell_id[jsh];
-        const int cell_k = bvk_cell_id[ksh];
-        const int cell_l = bvk_cell_id[lsh];
-        const int jshp = cell0_shl_id[jsh];
-        const int kshp = cell0_shl_id[ksh];
-        const int lshp = cell0_shl_id[lsh];
-        const int dm_lk_off = dm_translation[cell_l * nkpts + cell_k];
-        const size_t Nbasp = nbasp;
-        const size_t nn0 = Nbasp * Nbasp;
+        int bvk_ncells = e_bvk->ncells;
+        int nbands = e_bvk->nbands;
+        int nbasp = e_bvk->nbasp;
+        int *bvk_cell_id = e_bvk->cell_id;
+        int *cell0_shl_id = e_bvk->cell0_shl_id;
+        int *sh_loc = e_bvk->sh_loc;
+        int cell_j = bvk_cell_id[jsh];
+        int cell_k = bvk_cell_id[ksh];
+        int cell_l = bvk_cell_id[lsh];
+        int jshp = cell0_shl_id[jsh];
+        int kshp = cell0_shl_id[ksh];
+        int lshp = cell0_shl_id[lsh];
+        int dm_lk_off = dm_translation[cell_l * bvk_ncells + cell_k];
+        size_t Nbasp = nbasp;
+        size_t nn0 = Nbasp * Nbasp;
         double direct_scf_cutoff = vhfopt->direct_scf_cutoff;
         double dm_lk_cond = vhfopt->dm_cond[dm_lk_off*nn0 + lshp*Nbasp+kshp];
         if (dm_lk_cond < direct_scf_cutoff) {
@@ -312,25 +319,25 @@ void PBCVHF_contract_j_s1(double *vj, double *dms, double *buf,
         } else {
                 direct_scf_cutoff /= dm_lk_cond;
         }
-        if (!_assemble_eris(buf, images_loc, ish, jsh, ksh, lsh,
+        if (!_assemble_eris(buf, sh_loc, ish, jsh, ksh, lsh,
                             direct_scf_cutoff, vhfopt, envs)) {
                 return;
         }
 
-        const int *ao_loc = envs->ao_loc;
-        const size_t naop = ao_loc[nbasp];
-        const size_t nn = naop * naop;
-        const size_t bn = naop * nbands;
-        const size_t knn = nn * nkpts;
-        const size_t bnn = bn * naop;
-        const int i0  = ao_loc[ish];
-        const int jp0 = ao_loc[jshp];
-        const int kp0 = ao_loc[kshp];
-        const int lp0 = ao_loc[lshp];
-        const int i1  = ao_loc[ish+1];
-        const int jp1 = ao_loc[jshp+1];
-        const int kp1 = ao_loc[kshp+1];
-        const int lp1 = ao_loc[lshp+1];
+        int *ao_loc = envs->ao_loc;
+        size_t naop = ao_loc[nbasp];
+        size_t nn = naop * naop;
+        size_t bn = naop * nbands;
+        size_t knn = nn * bvk_ncells;
+        size_t bnn = bn * naop;
+        int i0  = ao_loc[ish];
+        int jp0 = ao_loc[jshp];
+        int kp0 = ao_loc[kshp];
+        int lp0 = ao_loc[lshp];
+        int i1  = ao_loc[ish+1];
+        int jp1 = ao_loc[jshp+1];
+        int kp1 = ao_loc[kshp+1];
+        int lp1 = ao_loc[lshp+1];
         int idm, i, jp, kp, lp, n;
         double slk, qijkl;
         double *dm_lk;
@@ -353,22 +360,26 @@ void PBCVHF_contract_j_s1(double *vj, double *dms, double *buf,
 }
 
 static void contract_j_s2_kgtl(double *vj, double *dms, double *buf,
-                          int n_dm, int nkpts, int nbands, int nbasp,
-                          int ish, int jsh, int ksh, int lsh,
-                          int *bvk_cell_id, int *cell0_shl_id,
-                          int *images_loc, int *dm_translation,
-                          CVHFOpt *vhfopt, IntorEnvs *envs)
+                               int ish, int jsh, int ksh, int lsh,
+                               int n_dm, int *dm_translation,
+                               CVHFOpt *vhfopt, IntorEnvs *envs, BVKEnvs *e_bvk)
 {
-        const int cell_j = bvk_cell_id[jsh];
-        const int cell_k = bvk_cell_id[ksh];
-        const int cell_l = bvk_cell_id[lsh];
-        const int jshp = cell0_shl_id[jsh];
-        const int kshp = cell0_shl_id[ksh];
-        const int lshp = cell0_shl_id[lsh];
-        const int dm_lk_off = dm_translation[cell_l * nkpts + cell_k];
-        const int dm_kl_off = dm_translation[cell_k * nkpts + cell_l];
-        const size_t Nbasp = nbasp;
-        const size_t nn0 = Nbasp * Nbasp;
+        int bvk_ncells = e_bvk->ncells;
+        int nbands = e_bvk->nbands;
+        int nbasp = e_bvk->nbasp;
+        int *bvk_cell_id = e_bvk->cell_id;
+        int *cell0_shl_id = e_bvk->cell0_shl_id;
+        int *sh_loc = e_bvk->sh_loc;
+        int cell_j = bvk_cell_id[jsh];
+        int cell_k = bvk_cell_id[ksh];
+        int cell_l = bvk_cell_id[lsh];
+        int jshp = cell0_shl_id[jsh];
+        int kshp = cell0_shl_id[ksh];
+        int lshp = cell0_shl_id[lsh];
+        int dm_lk_off = dm_translation[cell_l * bvk_ncells + cell_k];
+        int dm_kl_off = dm_translation[cell_k * bvk_ncells + cell_l];
+        size_t Nbasp = nbasp;
+        size_t nn0 = Nbasp * Nbasp;
         double direct_scf_cutoff = vhfopt->direct_scf_cutoff;
         double dm_lk_cond = vhfopt->dm_cond[dm_lk_off*nn0 + lshp*Nbasp+kshp];
         double dm_kl_cond = vhfopt->dm_cond[dm_kl_off*nn0 + kshp*Nbasp+lshp];
@@ -378,25 +389,25 @@ static void contract_j_s2_kgtl(double *vj, double *dms, double *buf,
         } else {
                 direct_scf_cutoff /= dm_cond_max;
         }
-        if (!_assemble_eris(buf, images_loc, ish, jsh, ksh, lsh,
+        if (!_assemble_eris(buf, sh_loc, ish, jsh, ksh, lsh,
                             direct_scf_cutoff, vhfopt, envs)) {
                 return;
         }
 
-        const int *ao_loc = envs->ao_loc;
-        const size_t naop = ao_loc[nbasp];
-        const size_t nn = naop * naop;
-        const size_t bn = naop * nbands;
-        const size_t knn = nn * nkpts;
-        const size_t bnn = bn * naop;
-        const int i0  = ao_loc[ish];
-        const int jp0 = ao_loc[jshp];
-        const int kp0 = ao_loc[kshp];
-        const int lp0 = ao_loc[lshp];
-        const int i1  = ao_loc[ish+1];
-        const int jp1 = ao_loc[jshp+1];
-        const int kp1 = ao_loc[kshp+1];
-        const int lp1 = ao_loc[lshp+1];
+        int *ao_loc = envs->ao_loc;
+        size_t naop = ao_loc[nbasp];
+        size_t nn = naop * naop;
+        size_t bn = naop * nbands;
+        size_t knn = nn * bvk_ncells;
+        size_t bnn = bn * naop;
+        int i0  = ao_loc[ish];
+        int jp0 = ao_loc[jshp];
+        int kp0 = ao_loc[kshp];
+        int lp0 = ao_loc[lshp];
+        int i1  = ao_loc[ish+1];
+        int jp1 = ao_loc[jshp+1];
+        int kp1 = ao_loc[kshp+1];
+        int lp1 = ao_loc[lshp+1];
         int idm, i, jp, kp, lp, n;
         double slk, qijkl;
         double *dm_lk, *dm_kl;
@@ -420,42 +431,40 @@ static void contract_j_s2_kgtl(double *vj, double *dms, double *buf,
 }
 
 void PBCVHF_contract_j_s2kl(double *vj, double *dms, double *buf,
-                            int n_dm, int nkpts, int nbands, int nbasp,
                             int ish, int jsh, int ksh, int lsh,
-                            int *bvk_cell_id, int *cell0_shl_id,
-                            int *images_loc, int *dm_translation,
-                            CVHFOpt *vhfopt, IntorEnvs *envs)
+                            int n_dm, int *dm_translation,
+                            CVHFOpt *vhfopt, IntorEnvs *envs, BVKEnvs *e_bvk)
 {
         if (ksh > lsh) {
-                contract_j_s2_kgtl(vj, dms, buf, n_dm, nkpts, nbands, nbasp,
-                                   ish, jsh, ksh, lsh, bvk_cell_id,
-                                   cell0_shl_id, images_loc,
-                                   dm_translation, vhfopt, envs);
+                contract_j_s2_kgtl(vj, dms, buf, ish, jsh, ksh, lsh, n_dm,
+                                   dm_translation, vhfopt, envs, e_bvk);
         } else if (ksh == lsh) {
-                PBCVHF_contract_j_s1(vj, dms, buf, n_dm, nkpts, nbands, nbasp,
-                                     ish, jsh, ksh, lsh, bvk_cell_id,
-                                     cell0_shl_id, images_loc,
-                                     dm_translation, vhfopt, envs);
+                PBCVHF_contract_j_s1(vj, dms, buf, ish, jsh, ksh, lsh, n_dm,
+                                   dm_translation, vhfopt, envs, e_bvk);
         }
 }
 
 void PBCVHF_contract_jk_s1(double *jk, double *dms, double *buf,
-                           int n_dm, int nkpts, int nbands, int nbasp,
                            int ish, int jsh, int ksh, int lsh,
-                           int *bvk_cell_id, int *cell0_shl_id,
-                           int *images_loc, int *dm_translation,
-                           CVHFOpt *vhfopt, IntorEnvs *envs)
+                           int n_dm, int *dm_translation,
+                           CVHFOpt *vhfopt, IntorEnvs *envs, BVKEnvs *e_bvk)
 {
-        const int cell_j = bvk_cell_id[jsh];
-        const int cell_k = bvk_cell_id[ksh];
-        const int cell_l = bvk_cell_id[lsh];
-        const int jshp = cell0_shl_id[jsh];
-        const int kshp = cell0_shl_id[ksh];
-        const int lshp = cell0_shl_id[lsh];
-        const int dm_lk_off = dm_translation[cell_l * nkpts + cell_k];
-        const int dm_jk_off = dm_translation[cell_j * nkpts + cell_k];
-        const size_t Nbasp = nbasp;
-        const size_t nn0 = Nbasp * Nbasp;
+        int bvk_ncells = e_bvk->ncells;
+        int nbands = e_bvk->nbands;
+        int nbasp = e_bvk->nbasp;
+        int *bvk_cell_id = e_bvk->cell_id;
+        int *cell0_shl_id = e_bvk->cell0_shl_id;
+        int *sh_loc = e_bvk->sh_loc;
+        int cell_j = bvk_cell_id[jsh];
+        int cell_k = bvk_cell_id[ksh];
+        int cell_l = bvk_cell_id[lsh];
+        int jshp = cell0_shl_id[jsh];
+        int kshp = cell0_shl_id[ksh];
+        int lshp = cell0_shl_id[lsh];
+        int dm_lk_off = dm_translation[cell_l * bvk_ncells + cell_k];
+        int dm_jk_off = dm_translation[cell_j * bvk_ncells + cell_k];
+        size_t Nbasp = nbasp;
+        size_t nn0 = Nbasp * Nbasp;
         double direct_scf_cutoff = vhfopt->direct_scf_cutoff;
         double dm_lk_cond = vhfopt->dm_cond[dm_lk_off*nn0 + lshp*Nbasp+kshp];
         double dm_jk_cond = vhfopt->dm_cond[dm_jk_off*nn0 + jshp*Nbasp+kshp];
@@ -465,25 +474,25 @@ void PBCVHF_contract_jk_s1(double *jk, double *dms, double *buf,
         } else {
                 direct_scf_cutoff /= dm_cond_max;
         }
-        if (!_assemble_eris(buf, images_loc, ish, jsh, ksh, lsh,
+        if (!_assemble_eris(buf, sh_loc, ish, jsh, ksh, lsh,
                             direct_scf_cutoff, vhfopt, envs)) {
                 return;
         }
 
-        const int *ao_loc = envs->ao_loc;
-        const size_t naop = ao_loc[nbasp];
-        const size_t nn = naop * naop;
-        const size_t bn = naop * nbands;
-        const size_t knn = nn * nkpts;
-        const size_t bnn = bn * naop;
-        const int i0  = ao_loc[ish];
-        const int jp0 = ao_loc[jshp];
-        const int kp0 = ao_loc[kshp];
-        const int lp0 = ao_loc[lshp];
-        const int i1  = ao_loc[ish+1];
-        const int jp1 = ao_loc[jshp+1];
-        const int kp1 = ao_loc[kshp+1];
-        const int lp1 = ao_loc[lshp+1];
+        int *ao_loc = envs->ao_loc;
+        size_t naop = ao_loc[nbasp];
+        size_t nn = naop * naop;
+        size_t bn = naop * nbands;
+        size_t knn = nn * bvk_ncells;
+        size_t bnn = bn * naop;
+        int i0  = ao_loc[ish];
+        int jp0 = ao_loc[jshp];
+        int kp0 = ao_loc[kshp];
+        int lp0 = ao_loc[lshp];
+        int i1  = ao_loc[ish+1];
+        int jp1 = ao_loc[jshp+1];
+        int kp1 = ao_loc[kshp+1];
+        int lp1 = ao_loc[lshp+1];
         double *vj = jk + cell_j * naop;
         double *vk = jk + n_dm * bnn + cell_l * naop;
         int idm, i, jp, kp, lp, n;
@@ -512,24 +521,28 @@ void PBCVHF_contract_jk_s1(double *jk, double *dms, double *buf,
 }
 
 static void contract_jk_s2_kgtl(double *jk, double *dms, double *buf,
-                                int n_dm, int nkpts, int nbands, int nbasp,
                                 int ish, int jsh, int ksh, int lsh,
-                                int *bvk_cell_id, int *cell0_shl_id,
-                                int *images_loc, int *dm_translation,
-                                CVHFOpt *vhfopt, IntorEnvs *envs)
+                                int n_dm, int *dm_translation,
+                                CVHFOpt *vhfopt, IntorEnvs *envs, BVKEnvs *e_bvk)
 {
-        const int cell_j = bvk_cell_id[jsh];
-        const int cell_k = bvk_cell_id[ksh];
-        const int cell_l = bvk_cell_id[lsh];
-        const int jshp = cell0_shl_id[jsh];
-        const int kshp = cell0_shl_id[ksh];
-        const int lshp = cell0_shl_id[lsh];
-        const int dm_jk_off = dm_translation[cell_j*nkpts+cell_k];
-        const int dm_jl_off = dm_translation[cell_j*nkpts+cell_l];
-        const int dm_lk_off = dm_translation[cell_l*nkpts+cell_k];
-        const int dm_kl_off = dm_translation[cell_k*nkpts+cell_l];
-        const size_t Nbasp = nbasp;
-        const size_t nn0 = Nbasp * Nbasp;
+        int bvk_ncells = e_bvk->ncells;
+        int nbands = e_bvk->nbands;
+        int nbasp = e_bvk->nbasp;
+        int *bvk_cell_id = e_bvk->cell_id;
+        int *cell0_shl_id = e_bvk->cell0_shl_id;
+        int *sh_loc = e_bvk->sh_loc;
+        int cell_j = bvk_cell_id[jsh];
+        int cell_k = bvk_cell_id[ksh];
+        int cell_l = bvk_cell_id[lsh];
+        int jshp = cell0_shl_id[jsh];
+        int kshp = cell0_shl_id[ksh];
+        int lshp = cell0_shl_id[lsh];
+        int dm_jk_off = dm_translation[cell_j*bvk_ncells+cell_k];
+        int dm_jl_off = dm_translation[cell_j*bvk_ncells+cell_l];
+        int dm_lk_off = dm_translation[cell_l*bvk_ncells+cell_k];
+        int dm_kl_off = dm_translation[cell_k*bvk_ncells+cell_l];
+        size_t Nbasp = nbasp;
+        size_t nn0 = Nbasp * Nbasp;
         double direct_scf_cutoff = vhfopt->direct_scf_cutoff;
         double dm_jk_cond = vhfopt->dm_cond[dm_jk_off*nn0 + jshp*Nbasp+kshp];
         double dm_jl_cond = vhfopt->dm_cond[dm_jl_off*nn0 + jshp*Nbasp+lshp];
@@ -542,25 +555,25 @@ static void contract_jk_s2_kgtl(double *jk, double *dms, double *buf,
         } else {
                 direct_scf_cutoff /= dm_cond_max;
         }
-        if (!_assemble_eris(buf, images_loc, ish, jsh, ksh, lsh,
+        if (!_assemble_eris(buf, sh_loc, ish, jsh, ksh, lsh,
                             direct_scf_cutoff, vhfopt, envs)) {
                 return;
         }
 
-        const int *ao_loc = envs->ao_loc;
-        const size_t naop = ao_loc[nbasp];
-        const size_t nn = naop * naop;
-        const size_t bn = naop * nbands;
-        const size_t knn = nn * nkpts;
-        const size_t bnn = bn * naop;
-        const int i0  = ao_loc[ish];
-        const int jp0 = ao_loc[jshp];
-        const int kp0 = ao_loc[kshp];
-        const int lp0 = ao_loc[lshp];
-        const int i1  = ao_loc[ish+1];
-        const int jp1 = ao_loc[jshp+1];
-        const int kp1 = ao_loc[kshp+1];
-        const int lp1 = ao_loc[lshp+1];
+        int *ao_loc = envs->ao_loc;
+        size_t naop = ao_loc[nbasp];
+        size_t nn = naop * naop;
+        size_t bn = naop * nbands;
+        size_t knn = nn * bvk_ncells;
+        size_t bnn = bn * naop;
+        int i0  = ao_loc[ish];
+        int jp0 = ao_loc[jshp];
+        int kp0 = ao_loc[kshp];
+        int lp0 = ao_loc[lshp];
+        int i1  = ao_loc[ish+1];
+        int jp1 = ao_loc[jshp+1];
+        int kp1 = ao_loc[kshp+1];
+        int lp1 = ao_loc[lshp+1];
         double *vj = jk + cell_j * naop;
         double *vk_ik = jk + n_dm * bnn + cell_k * naop;
         double *vk_il = jk + n_dm * bnn + cell_l * naop;
@@ -595,36 +608,30 @@ static void contract_jk_s2_kgtl(double *jk, double *dms, double *buf,
 }
 
 void PBCVHF_contract_jk_s2kl(double *jk, double *dms, double *buf,
-                             int n_dm, int nkpts, int nbands, int nbasp,
                              int ish, int jsh, int ksh, int lsh,
-                             int *bvk_cell_id, int *cell0_shl_id,
-                             int *images_loc, int *dm_translation,
-                             CVHFOpt *vhfopt, IntorEnvs *envs)
+                             int n_dm, int *dm_translation,
+                             CVHFOpt *vhfopt, IntorEnvs *envs, BVKEnvs *e_bvk)
 {
         if (ksh > lsh) {
-                contract_jk_s2_kgtl(jk, dms, buf, n_dm, nkpts, nbands, nbasp,
-                                   ish, jsh, ksh, lsh, bvk_cell_id,
-                                   cell0_shl_id, images_loc,
-                                   dm_translation, vhfopt, envs);
+                contract_jk_s2_kgtl(jk, dms, buf, ish, jsh, ksh, lsh, n_dm,
+                                    dm_translation, vhfopt, envs, e_bvk);
         } else if (ksh == lsh) {
-                PBCVHF_contract_jk_s1(jk, dms, buf, n_dm, nkpts, nbands, nbasp,
-                                      ish, jsh, ksh, lsh, bvk_cell_id,
-                                      cell0_shl_id, images_loc,
-                                      dm_translation, vhfopt, envs);
+                PBCVHF_contract_jk_s1(jk, dms, buf, ish, jsh, ksh, lsh, n_dm,
+                                    dm_translation, vhfopt, envs, e_bvk);
         }
 }
 
 /*
- * shls_slice refers to the shells of entire sup-mol.
+ * shls_slice refers to the shells in the bvk supcell
  * bvk_ao_loc are ao_locs of bvk-cell basis appeared in supmol (some basis are removed)
  * nbasp is the number of basis in primitive cell
  * dm_translation utilizes the translation symmetry for density matrices (wrt the full bvk-cell)
  * DM[M,N] = DM[N-M] by mapping the 2D subscripts to 1D subscripts
  */
 void PBCVHF_direct_drv(void (*fdot)(), double *out, double *dms,
-                       int n_dm, int nkpts, int nbands, int nbasp,
+                       int n_dm, int bvk_ncells, int nkpts, int nbands, int nbasp,
                        char *ovlp_mask, int *bvk_cell_id,
-                       int *cell0_shl_id, int *images_loc,
+                       int *cell0_shl_id, int *sh_loc,
                        int *shls_slice, int *bvk_ao_loc,
                        int *dm_translation, CINTOpt *cintopt, CVHFOpt *vhfopt,
                        int *atm, int natm, int *bas, int nbas, double *env)
@@ -645,10 +652,12 @@ void PBCVHF_direct_drv(void (*fdot)(), double *out, double *dms,
         const size_t nksh = ksh1 - ksh0;
         const size_t nlsh = lsh1 - lsh0;
         const int di = GTOmax_shell_dim(bvk_ao_loc, shls_slice, 1);
-        const int cache_size = _max_cache_size(int2e_sph, shls_slice, images_loc,
+        const int cache_size = _max_cache_size(int2e_sph, shls_slice, sh_loc,
                                                atm, natm, bas, nbas, env);
         const size_t nij = nish * njsh;
         const size_t naop = bvk_ao_loc[nbasp];
+        BVKEnvs envs_bvk = {bvk_ncells, nkpts, nbands, nbasp, sh_loc, NULL, NULL,
+                bvk_cell_id, cell0_shl_id};
 
 #pragma omp parallel
 {
@@ -674,9 +683,8 @@ void PBCVHF_direct_drv(void (*fdot)(), double *out, double *dms,
                         if (!ovlp_mask[k*nlsh+l]) {
                                 continue;
                         }
-                        (*fdot)(v_priv, dms, buf, n_dm, nkpts, nbands, nbasp,
-                                i, j, k, l, bvk_cell_id, cell0_shl_id, images_loc,
-                                dm_translation, vhfopt, &envs);
+                        (*fdot)(v_priv, dms, buf, i, j, k, l, n_dm,
+                                dm_translation, vhfopt, &envs, &envs_bvk);
                 } }
         }
 #pragma omp critical

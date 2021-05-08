@@ -21,18 +21,15 @@
 #include <assert.h>
 #include "config.h"
 #include "cint.h"
+#include "gto/gto.h"
+#include "np_helper/np_helper.h"
 #include "vhf/fblas.h"
 #include "pbc/optimizer.h"
-#include "np_helper/np_helper.h"
 
 #define INTBUFMAX       1000
 #define INTBUFMAX10     8000
 #define IMGBLK          80
 #define OF_CMPLX        2
-
-int GTOmax_shell_dim(int *ao_loc, int *shls_slice, int ncenter);
-int GTOmax_cache_size(int (*intor)(), int *shls_slice, int ncenter,
-                      int *atm, int natm, int *bas, int nbas, double *env);
 
 static int shloc_partition(int *kshloc, int *ao_loc, int ksh0, int ksh1, int dkmax)
 {

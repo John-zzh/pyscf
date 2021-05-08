@@ -146,20 +146,25 @@ class RangeSeparationJKBuilder(object):
         # * The attenuated coulomb integrals between four s-type Gaussians
         # (2*a/pi)^{3/4}exp(-a*r^2) is
         #   (erfc(omega*a^0.5/(omega^2+a)^0.5*R) - erfc(a^0.5*R)) / R
-        # if two Gaussians on one center and the other two on another center
-        # and the distance between the two centers are R.
-        # * The attenuated coulomb integrals between two spherical charge
+        # if two Gaussians are on one center and the other two are on another center,
+        # the distance between the two centers is R.
+        # * The attenuated coulomb integrals between the two spherical charge
         # distributions is
         #   ~(pi/eta)^3/2 (erfc(tau*(eta/2)^0.5*R) - erfc((eta/2)^0.5*R)) / R
         #       tau = omega/sqrt(omega^2 + eta/2)
         # if the spherical charge distribution is the product of above s-type
-        # Gaussian with exponent eta and a very smooth function.
+        # Gaussians with exponent eta and a very smooth function.
         # When R is large, the attenuated Coulomb integral is
         #   ~= (pi/eta)^3/2 erfc(tau*(eta/2)^0.5*R) / R
         #   ~= pi/(tau*eta^2*R^2) exp(-tau^2*eta*R^2/2)
         tau = self.omega / (self.omega**2 + eta/2)**.5
         rcut_sr = 10  # initial guess
         rcut_sr = (-np.log(direct_scf_tol * tau * (eta * rcut_sr)**2/np.pi) / (tau**2*eta/2))**.5
+        # From another source (see rsjk doc) of estimation, the (ss|ss)
+        # integral boundary is roughly
+        #   exp(-omega^2*(eta/2) / (2*omega^2 + eta/2) R^2) / (2*omega*R^2)
+        # tau = self.omega / (2 * self.omega**2 + eta/2)**.5
+        # rcut_sr ~= (-np.log(direct_scf_tol * 2 * self.omega * rcut_sr**2) / (tau**2*eta/2))**.5
         logger.debug(self, 'eta = %g  rcut_sr = %g', eta, rcut_sr)
 
         # Ls is the translation vectors to mimic periodicity of a cell
@@ -307,7 +312,8 @@ class RangeSeparationJKBuilder(object):
         drv = libpbc.PBCVHF_direct_drv
         drv(getattr(libpbc, fdot), vs.ctypes.data_as(ctypes.c_void_p),
             sc_dm.ctypes.data_as(ctypes.c_void_p), ctypes.c_int(n_dm),
-            ctypes.c_int(nkpts), ctypes.c_int(nbands), ctypes.c_int(cell.nbas),
+            ctypes.c_int(nkpts), ctypes.c_int(nkpts),
+            ctypes.c_int(nbands), ctypes.c_int(cell.nbas),
             self.ovlp_mask.ctypes.data_as(ctypes.c_void_p),
             self.bvk_cell_id.ctypes.data_as(ctypes.c_void_p),
             self.cell0_shl_id.ctypes.data_as(ctypes.c_void_p),

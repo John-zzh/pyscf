@@ -21,6 +21,8 @@
 
 #define NOVALUE 0xffffffff
 
+#if !defined(HAVE_DEFINED_INTORENV_H)
+#define HAVE_DEFINED_INTORENV_H
 typedef struct {
         int v_ket_nsh;  /* v_ket_sh1 - v_ket_sh0 */
         int offset0_outptr;  /* v_bra_sh0 * v_ket_nsh + v_ket_sh0 */
@@ -55,19 +57,7 @@ typedef struct {
         CINTOpt *cintopt;
         int ncomp;
 } IntorEnvs;
-
-struct _VHFEnvs {
-        int natm;
-        int nbas;
-        int *atm;
-        int *bas;
-        double *env;
-        int nao;
-        int *ao_loc; // size of nbas+1, last element = nao
-        int *tao; // time reversal mappings, index start from 1
-        CVHFOpt *vhfopt;
-        CINTOpt *cintopt;
-};
+#endif
 
 void CVHFnr_direct_drv(int (*intor)(), void (*fdot)(), JKOperator **jkop,
                        double **dms, double **vjk, int n_dm, int ncomp,
