@@ -144,7 +144,7 @@ class KnownValues(unittest.TestCase):
         coords = pdft.gen_grid.gen_uniform_grids(cell1)
         Gv, Gvbase, kws = cell1.get_Gv_weights(cell1.mesh)
         dat = ft_ao.ft_aopair(cell1, cell1.Gv, aosym='s1', intor='GTO_ft_pdotp_sph')
-        self.assertAlmostEqual(lib.fp(dat), 5.7858606710458078-8.654809509773056j, 9)
+        self.assertAlmostEqual(lib.fp(dat), 5.7858606710458078-8.654809509773056j, 7)
         aoR = pdft.numint.eval_ao(cell1, coords, deriv=1)
         ngrids, nao = aoR.shape[1:]
         aoaoR = numpy.einsum('xpi,xpj->ijp', aoR[1:4], aoR[1:4])
@@ -221,7 +221,7 @@ class KnownValues(unittest.TestCase):
     def test_ft_aoao1(self):
         cell = pgto.Cell()
         cell.a = numpy.eye(3) * 5
-        n = 15
+        n = 18
         cell.mesh = numpy.array([n,n,n])
         cell.atom = '''C    1.3    .2       .3
                        C     .1    .1      1.1
@@ -240,12 +240,12 @@ class KnownValues(unittest.TestCase):
         ao2ref = [tools.fft(aoR2[:,i,j], cell.mesh) * cell.vol/ngrids
                   for i in range(nao) for j in range(nao)]
         ao2ref = numpy.array(ao2ref).reshape(6,6,-1).transpose(2,0,1)
-        self.assertAlmostEqual(abs(ao2ref - ao2).max(), 0, 6)
+        self.assertAlmostEqual(abs(ao2ref - ao2).max(), 0, 8)
 
         aoG = ft_ao.ft_ao(cell, cell.Gv)
         aoref = [tools.fft(aoR[:,i], cell.mesh) * cell.vol/ngrids
                  for i in range(nao)]
-        self.assertAlmostEqual(abs(numpy.array(aoref).T - aoG).max(), 0, 6)
+        self.assertAlmostEqual(abs(numpy.array(aoref).T - aoG).max(), 0, 8)
 
     def test_ft_aopair_bvk(self):
         from pyscf.pbc.tools import k2gamma
@@ -270,7 +270,7 @@ class KnownValues(unittest.TestCase):
         aopair = ft_ao.ft_aopair_kpts(cell, Gv, b=b, gxyz=gxyz, Gvbase=Gvbase,
                                       kptjs=kpts, bvk_kmesh=bvk_kmesh)
         self.assertAlmostEqual(abs(ref - aopair).max(), 0, 8)
-        self.assertAlmostEqual(lib.fp(aopair), (-5.735639500461687-12.425151458809875j), 8)
+        self.assertAlmostEqual(lib.fp(aopair), (-5.735639500461687-12.425151458809875j), 6)
 
 if __name__ == '__main__':
     print('Full Tests for ft_ao')

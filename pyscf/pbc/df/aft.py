@@ -277,14 +277,26 @@ def get_pp(mydf, kpts=None):
     logger.timer(mydf, 'get_pp', *t0)
     return vpp
 
-def weighted_coulG(mydf, kpt=numpy.zeros(3), exx=False, mesh=None):
+def weighted_coulG(mydf, kpt=numpy.zeros(3), exx=False, mesh=None, omega=None):
     cell = mydf.cell
     if mesh is None:
         mesh = mydf.mesh
     Gv, Gvbase, kws = cell.get_Gv_weights(mesh)
-    coulG = tools.get_coulG(cell, kpt, exx, mydf, mesh, Gv)
+    coulG = tools.get_coulG(cell, kpt, exx, mydf, mesh, Gv, omega=omega)
     coulG *= kws
     return coulG
+
+def weighted_coulG_LR(mydf, kpt=numpy.zeros(3), exx=False, mesh=None):
+    if mydf.cell.omega != 0:
+        raise RuntimeError('RangeSeparationJKBuilder cannot be used to evaluate '
+                           'the long-range HF exchange in RSH functional')
+    return weighted_coulG(mydf, kpt, exx, mesh, mydf.omega)
+
+def weighted_coulG_SR(mydf, kpt=numpy.zeros(3), exx=False, mesh=None):
+    if mydf.cell.omega != 0:
+        raise RuntimeError('RangeSeparationJKBuilder cannot be used to evaluate '
+                           'the long-range HF exchange in RSH functional')
+    return weighted_coulG(mydf, kpt, False, mesh, -mydf.omega)
 
 
 class AFTDF(lib.StreamObject):

@@ -26,7 +26,6 @@ from pyscf.pbc.df.incore import wrap_int3c, make_auxcell
 
 libpbc = lib.load_library('libpbc')
 
-
 def aux_e1(cell, auxcell_or_auxbasis, erifile, intor='int3c2e', aosym='s2ij', comp=None,
            kptij_lst=None, dataname='eri_mo', shls_slice=None, max_memory=2000,
            verbose=0):
@@ -261,5 +260,3 @@ def _aux_e2(cell, auxcell_or_auxbasis, erifile, intor='int3c2e', aosym='s2ij', c
     if not isinstance(erifile, h5py.Group):
         feri.close()
     return erifile
-
-

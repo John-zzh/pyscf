@@ -12,7 +12,9 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-add_library(pbc SHARED ft_ao.c fill_ints.c optimizer.c grid_ao.c nr_direct.c)
+add_library(pbc SHARED
+  ft_ao.c fill_ints.c optimizer.c grid_ao.c nr_direct.c
+  inner_dot.c cint2e.c)
 add_dependencies(pbc cgto cvhf np_helper)
 
 set_target_properties(pbc PROPERTIES

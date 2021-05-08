@@ -7,7 +7,7 @@
 /*  #C(0 1) G |GTO> */
 static void shell_eval_GTOval_ig(double *cgto, double *ri, double *exps,
 double *coord, double *alpha, double *coeff, double *env,
-int l, int np, int nc, size_t nao, size_t ngrids, size_t bgrids)
+int l, int np, int nc, size_t nao, size_t ngrids, size_t bgrids, double *cache)
 {
 const size_t degen = (l+1)*(l+2)/2;
 const size_t bgrids0 = (bgrids >= SIMDD) ? (bgrids+1-SIMDD) : 0;
@@ -18,12 +18,12 @@ double *pgto;
 double *gridx = coord;
 double *gridy = coord+BLKSIZE;
 double *gridz = coord+BLKSIZE*2;
-double fx0[SIMDD*16*2];
-double fy0[SIMDD*16*2];
-double fz0[SIMDD*16*2];
-double *fx1 = fx0 + SIMDD*16;
-double *fy1 = fy0 + SIMDD*16;
-double *fz1 = fz0 + SIMDD*16;
+double fx0[SIMDD*(ANG_MAX+2)*2];
+double fy0[SIMDD*(ANG_MAX+2)*2];
+double fz0[SIMDD*(ANG_MAX+2)*2];
+double *fx1 = fx0 + SIMDD*(ANG_MAX+2);
+double *fy1 = fy0 + SIMDD*(ANG_MAX+2);
+double *fz1 = fz0 + SIMDD*(ANG_MAX+2);
 double buf[SIMDD*nc*3];
 double s[SIMDD*3];
 double *gto0 = cgto;
@@ -71,6 +71,7 @@ buf[1*SIMDD+n] = + (-1*c[2]*s[0*SIMDD+n]) + c[0]*s[2*SIMDD+n];
 buf[2*SIMDD+n] = + (-1*c[0]*s[1*SIMDD+n]) + c[1]*s[0*SIMDD+n];
                 }
                 for (j = 0, j1 = l1; j < nc; j++, j1+=degen) {
+#pragma GCC ivdep
                 for (n = 0; n < SIMDD; n++) {
 gto0[j1*ngrids+i+n] += buf[0*SIMDD+n] * coeff[j*np+k];
 gto1[j1*ngrids+i+n] += buf[1*SIMDD+n] * coeff[j*np+k];
@@ -142,7 +143,7 @@ ngrids, param, shls_slice, ao_loc, ao, coord, non0table, atm, natm, bas, nbas, e
 /*  #C(0 1) NABLA G |GTO> */
 static void shell_eval_GTOval_ipig(double *cgto, double *ri, double *exps,
 double *coord, double *alpha, double *coeff, double *env,
-int l, int np, int nc, size_t nao, size_t ngrids, size_t bgrids)
+int l, int np, int nc, size_t nao, size_t ngrids, size_t bgrids, double *cache)
 {
 const size_t degen = (l+1)*(l+2)/2;
 const size_t bgrids0 = (bgrids >= SIMDD) ? (bgrids+1-SIMDD) : 0;
@@ -153,18 +154,18 @@ double *pgto;
 double *gridx = coord;
 double *gridy = coord+BLKSIZE;
 double *gridz = coord+BLKSIZE*2;
-double fx0[SIMDD*16*4];
-double fy0[SIMDD*16*4];
-double fz0[SIMDD*16*4];
-double *fx1 = fx0 + SIMDD*16;
-double *fy1 = fy0 + SIMDD*16;
-double *fz1 = fz0 + SIMDD*16;
-double *fx2 = fx1 + SIMDD*16;
-double *fy2 = fy1 + SIMDD*16;
-double *fz2 = fz1 + SIMDD*16;
-double *fx3 = fx2 + SIMDD*16;
-double *fy3 = fy2 + SIMDD*16;
-double *fz3 = fz2 + SIMDD*16;
+double fx0[SIMDD*(ANG_MAX+3)*4];
+double fy0[SIMDD*(ANG_MAX+3)*4];
+double fz0[SIMDD*(ANG_MAX+3)*4];
+double *fx1 = fx0 + SIMDD*(ANG_MAX+3);
+double *fy1 = fy0 + SIMDD*(ANG_MAX+3);
+double *fz1 = fz0 + SIMDD*(ANG_MAX+3);
+double *fx2 = fx1 + SIMDD*(ANG_MAX+3);
+double *fy2 = fy1 + SIMDD*(ANG_MAX+3);
+double *fz2 = fz1 + SIMDD*(ANG_MAX+3);
+double *fx3 = fx2 + SIMDD*(ANG_MAX+3);
+double *fy3 = fy2 + SIMDD*(ANG_MAX+3);
+double *fz3 = fz2 + SIMDD*(ANG_MAX+3);
 double buf[SIMDD*nc*9];
 double s[SIMDD*9];
 double *gto0 = cgto;
@@ -232,6 +233,7 @@ buf[7*SIMDD+n] = + (-1*c[2]*s[6*SIMDD+n]) + c[0]*s[8*SIMDD+n];
 buf[8*SIMDD+n] = + (-1*c[0]*s[7*SIMDD+n]) + c[1]*s[6*SIMDD+n];
                 }
                 for (j = 0, j1 = l1; j < nc; j++, j1+=degen) {
+#pragma GCC ivdep
                 for (n = 0; n < SIMDD; n++) {
 gto0[j1*ngrids+i+n] += buf[0*SIMDD+n] * coeff[j*np+k];
 gto1[j1*ngrids+i+n] += buf[1*SIMDD+n] * coeff[j*np+k];
@@ -329,7 +331,7 @@ ngrids, param, shls_slice, ao_loc, ao, coord, non0table, atm, natm, bas, nbas, e
 /*  SIGMA DOT P |GTO> */
 static void shell_eval_GTOval_sp(double *cgto, double *ri, double *exps,
 double *coord, double *alpha, double *coeff, double *env,
-int l, int np, int nc, size_t nao, size_t ngrids, size_t bgrids)
+int l, int np, int nc, size_t nao, size_t ngrids, size_t bgrids, double *cache)
 {
 const size_t degen = (l+1)*(l+2)/2;
 const size_t bgrids0 = (bgrids >= SIMDD) ? (bgrids+1-SIMDD) : 0;
@@ -340,12 +342,12 @@ double *pgto;
 double *gridx = coord;
 double *gridy = coord+BLKSIZE;
 double *gridz = coord+BLKSIZE*2;
-double fx0[SIMDD*16*2];
-double fy0[SIMDD*16*2];
-double fz0[SIMDD*16*2];
-double *fx1 = fx0 + SIMDD*16;
-double *fy1 = fy0 + SIMDD*16;
-double *fz1 = fz0 + SIMDD*16;
+double fx0[SIMDD*(ANG_MAX+2)*2];
+double fy0[SIMDD*(ANG_MAX+2)*2];
+double fz0[SIMDD*(ANG_MAX+2)*2];
+double *fx1 = fx0 + SIMDD*(ANG_MAX+2);
+double *fy1 = fy0 + SIMDD*(ANG_MAX+2);
+double *fz1 = fz0 + SIMDD*(ANG_MAX+2);
 double buf[SIMDD*nc*4];
 double s[SIMDD*3];
 double *gto0 = cgto;
@@ -391,6 +393,7 @@ buf[2*SIMDD+n] = + (-1*s[2*SIMDD+n]);
 buf[3*SIMDD+n] = 0;
                 }
                 for (j = 0, j1 = l1; j < nc; j++, j1+=degen) {
+#pragma GCC ivdep
                 for (n = 0; n < SIMDD; n++) {
 gto0[j1*ngrids+i+n] += buf[0*SIMDD+n] * coeff[j*np+k];
 gto1[j1*ngrids+i+n] += buf[1*SIMDD+n] * coeff[j*np+k];
@@ -465,7 +468,7 @@ ngrids, param, shls_slice, ao_loc, ao, coord, non0table, atm, natm, bas, nbas, e
 /*  NABLA SIGMA DOT P |GTO> */
 static void shell_eval_GTOval_ipsp(double *cgto, double *ri, double *exps,
 double *coord, double *alpha, double *coeff, double *env,
-int l, int np, int nc, size_t nao, size_t ngrids, size_t bgrids)
+int l, int np, int nc, size_t nao, size_t ngrids, size_t bgrids, double *cache)
 {
 const size_t degen = (l+1)*(l+2)/2;
 const size_t bgrids0 = (bgrids >= SIMDD) ? (bgrids+1-SIMDD) : 0;
@@ -476,18 +479,18 @@ double *pgto;
 double *gridx = coord;
 double *gridy = coord+BLKSIZE;
 double *gridz = coord+BLKSIZE*2;
-double fx0[SIMDD*16*4];
-double fy0[SIMDD*16*4];
-double fz0[SIMDD*16*4];
-double *fx1 = fx0 + SIMDD*16;
-double *fy1 = fy0 + SIMDD*16;
-double *fz1 = fz0 + SIMDD*16;
-double *fx2 = fx1 + SIMDD*16;
-double *fy2 = fy1 + SIMDD*16;
-double *fz2 = fz1 + SIMDD*16;
-double *fx3 = fx2 + SIMDD*16;
-double *fy3 = fy2 + SIMDD*16;
-double *fz3 = fz2 + SIMDD*16;
+double fx0[SIMDD*(ANG_MAX+3)*4];
+double fy0[SIMDD*(ANG_MAX+3)*4];
+double fz0[SIMDD*(ANG_MAX+3)*4];
+double *fx1 = fx0 + SIMDD*(ANG_MAX+3);
+double *fy1 = fy0 + SIMDD*(ANG_MAX+3);
+double *fz1 = fz0 + SIMDD*(ANG_MAX+3);
+double *fx2 = fx1 + SIMDD*(ANG_MAX+3);
+double *fy2 = fy1 + SIMDD*(ANG_MAX+3);
+double *fz2 = fz1 + SIMDD*(ANG_MAX+3);
+double *fx3 = fx2 + SIMDD*(ANG_MAX+3);
+double *fy3 = fy2 + SIMDD*(ANG_MAX+3);
+double *fz3 = fz2 + SIMDD*(ANG_MAX+3);
 double buf[SIMDD*nc*12];
 double s[SIMDD*9];
 double *gto0 = cgto;
@@ -557,6 +560,7 @@ buf[10*SIMDD+n] = + (-1*s[8*SIMDD+n]);
 buf[11*SIMDD+n] = 0;
                 }
                 for (j = 0, j1 = l1; j < nc; j++, j1+=degen) {
+#pragma GCC ivdep
                 for (n = 0; n < SIMDD; n++) {
 gto0[j1*ngrids+i+n] += buf[0*SIMDD+n] * coeff[j*np+k];
 gto1[j1*ngrids+i+n] += buf[1*SIMDD+n] * coeff[j*np+k];
@@ -1037,7 +1041,7 @@ ngrids, param, shls_slice, ao_loc, ao, coord, non0table, atm, natm, bas, nbas, e
 /*  NABLA RC |GTO> */
 static void shell_eval_GTOval_iprc(double *cgto, double *ri, double *exps,
 double *coord, double *alpha, double *coeff, double *env,
-int l, int np, int nc, size_t nao, size_t ngrids, size_t bgrids)
+int l, int np, int nc, size_t nao, size_t ngrids, size_t bgrids, double *cache)
 {
 const size_t degen = (l+1)*(l+2)/2;
 const size_t bgrids0 = (bgrids >= SIMDD) ? (bgrids+1-SIMDD) : 0;
@@ -1048,18 +1052,18 @@ double *pgto;
 double *gridx = coord;
 double *gridy = coord+BLKSIZE;
 double *gridz = coord+BLKSIZE*2;
-double fx0[SIMDD*16*4];
-double fy0[SIMDD*16*4];
-double fz0[SIMDD*16*4];
-double *fx1 = fx0 + SIMDD*16;
-double *fy1 = fy0 + SIMDD*16;
-double *fz1 = fz0 + SIMDD*16;
-double *fx2 = fx1 + SIMDD*16;
-double *fy2 = fy1 + SIMDD*16;
-double *fz2 = fz1 + SIMDD*16;
-double *fx3 = fx2 + SIMDD*16;
-double *fy3 = fy2 + SIMDD*16;
-double *fz3 = fz2 + SIMDD*16;
+double fx0[SIMDD*(ANG_MAX+3)*4];
+double fy0[SIMDD*(ANG_MAX+3)*4];
+double fz0[SIMDD*(ANG_MAX+3)*4];
+double *fx1 = fx0 + SIMDD*(ANG_MAX+3);
+double *fy1 = fy0 + SIMDD*(ANG_MAX+3);
+double *fz1 = fz0 + SIMDD*(ANG_MAX+3);
+double *fx2 = fx1 + SIMDD*(ANG_MAX+3);
+double *fy2 = fy1 + SIMDD*(ANG_MAX+3);
+double *fz2 = fz1 + SIMDD*(ANG_MAX+3);
+double *fx3 = fx2 + SIMDD*(ANG_MAX+3);
+double *fy3 = fy2 + SIMDD*(ANG_MAX+3);
+double *fz3 = fz2 + SIMDD*(ANG_MAX+3);
 double buf[SIMDD*nc*9];
 double s[SIMDD*9];
 double *gto0 = cgto;
@@ -1127,6 +1131,7 @@ buf[7*SIMDD+n] = + s[7*SIMDD+n];
 buf[8*SIMDD+n] = + s[8*SIMDD+n];
                 }
                 for (j = 0, j1 = l1; j < nc; j++, j1+=degen) {
+#pragma GCC ivdep
                 for (n = 0; n < SIMDD; n++) {
 gto0[j1*ngrids+i+n] += buf[0*SIMDD+n] * coeff[j*np+k];
 gto1[j1*ngrids+i+n] += buf[1*SIMDD+n] * coeff[j*np+k];
@@ -1224,7 +1229,7 @@ ngrids, param, shls_slice, ao_loc, ao, coord, non0table, atm, natm, bas, nbas, e
 /*  NABLA R |GTO> */
 static void shell_eval_GTOval_ipr(double *cgto, double *ri, double *exps,
 double *coord, double *alpha, double *coeff, double *env,
-int l, int np, int nc, size_t nao, size_t ngrids, size_t bgrids)
+int l, int np, int nc, size_t nao, size_t ngrids, size_t bgrids, double *cache)
 {
 const size_t degen = (l+1)*(l+2)/2;
 const size_t bgrids0 = (bgrids >= SIMDD) ? (bgrids+1-SIMDD) : 0;
@@ -1235,18 +1240,18 @@ double *pgto;
 double *gridx = coord;
 double *gridy = coord+BLKSIZE;
 double *gridz = coord+BLKSIZE*2;
-double fx0[SIMDD*16*4];
-double fy0[SIMDD*16*4];
-double fz0[SIMDD*16*4];
-double *fx1 = fx0 + SIMDD*16;
-double *fy1 = fy0 + SIMDD*16;
-double *fz1 = fz0 + SIMDD*16;
-double *fx2 = fx1 + SIMDD*16;
-double *fy2 = fy1 + SIMDD*16;
-double *fz2 = fz1 + SIMDD*16;
-double *fx3 = fx2 + SIMDD*16;
-double *fy3 = fy2 + SIMDD*16;
-double *fz3 = fz2 + SIMDD*16;
+double fx0[SIMDD*(ANG_MAX+3)*4];
+double fy0[SIMDD*(ANG_MAX+3)*4];
+double fz0[SIMDD*(ANG_MAX+3)*4];
+double *fx1 = fx0 + SIMDD*(ANG_MAX+3);
+double *fy1 = fy0 + SIMDD*(ANG_MAX+3);
+double *fz1 = fz0 + SIMDD*(ANG_MAX+3);
+double *fx2 = fx1 + SIMDD*(ANG_MAX+3);
+double *fy2 = fy1 + SIMDD*(ANG_MAX+3);
+double *fz2 = fz1 + SIMDD*(ANG_MAX+3);
+double *fx3 = fx2 + SIMDD*(ANG_MAX+3);
+double *fy3 = fy2 + SIMDD*(ANG_MAX+3);
+double *fz3 = fz2 + SIMDD*(ANG_MAX+3);
 double buf[SIMDD*nc*9];
 double s[SIMDD*9];
 double *gto0 = cgto;
@@ -1310,6 +1315,7 @@ buf[7*SIMDD+n] = + s[7*SIMDD+n];
 buf[8*SIMDD+n] = + s[8*SIMDD+n];
                 }
                 for (j = 0, j1 = l1; j < nc; j++, j1+=degen) {
+#pragma GCC ivdep
                 for (n = 0; n < SIMDD; n++) {
 gto0[j1*ngrids+i+n] += buf[0*SIMDD+n] * coeff[j*np+k];
 gto1[j1*ngrids+i+n] += buf[1*SIMDD+n] * coeff[j*np+k];

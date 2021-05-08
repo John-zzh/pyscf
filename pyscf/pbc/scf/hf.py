@@ -29,13 +29,13 @@ import sys
 
 import numpy as np
 import h5py
-from pyscf.scf import hf as mol_hf
 from pyscf import lib
 from pyscf.lib import logger
+from pyscf.scf import hf as mol_hf
 from pyscf.data import nist
 from pyscf.pbc import gto
 from pyscf.pbc import tools
-from pyscf.pbc.gto import ecp
+from pyscf.pbc.gto import ecp, estimate_rcut
 from pyscf.pbc.gto.pseudo import get_pp
 from pyscf.pbc.scf import chkfile  # noqa
 from pyscf.pbc.scf import addons
@@ -54,8 +54,8 @@ def get_ovlp(cell, kpt=np.zeros(3)):
     cond = np.max(lib.cond(s))
     if cond * cell.precision > 1e2:
         prec = 1e2 / cond
-        rmin = max([cell.bas_rcut(ib, prec) for ib in range(cell.nbas)])
-        if cell.rcut < rmin:
+        rmin = estimate_rcut(cell)
+        if cell.rcut < rmin * .9:
             logger.warn(cell, 'Singularity detected in overlap matrix.  '
                         'Integral accuracy may be not enough.\n      '
                         'You can adjust  cell.precision  or  cell.rcut  to '

@@ -23,7 +23,7 @@ from pyscf import lib
 from pyscf import gto
 import pyscf.df
 from pyscf.scf import _vhf
-from pyscf.pbc.gto import _pbcintor
+from pyscf.pbc.gto import _pbcintor, estimate_rcut
 from pyscf.pbc.lib.kpts_helper import is_zero, gamma_point, unique, KPT_DIFF_TOL
 
 libpbc = lib.load_library('libpbc')
@@ -33,8 +33,7 @@ def make_auxmol(cell, auxbasis=None):
     See pyscf.df.addons.make_auxmol
     '''
     auxcell = pyscf.df.addons.make_auxmol(cell, auxbasis)
-    auxcell.rcut = max([auxcell.bas_rcut(ib, cell.precision)
-                        for ib in range(auxcell.nbas)])
+    auxcell.rcut = estimate_rcut(auxcell, cell.precision)
     return auxcell
 
 make_auxcell = make_auxmol
@@ -146,9 +145,10 @@ def wrap_int3c(cell, auxcell, intor='int3c2e', aosym='s1', comp=1,
         expkL = numpy.ones(1)
     elif is_zero(kpti-kptj):  # j_only
         kk_type = 'k'
-        kpts = kptij_idx = numpy.asarray(kpti, order='C')
+        kpts = numpy.asarray(kpti, order='C')
         expkL = numpy.exp(1j * numpy.dot(kpts, Ls.T))
         nkpts = nkptij = len(kpts)
+        kptij_idx = numpy.arange(nkptij)
     else:
         kk_type = 'kk'
         kpts = unique(numpy.vstack([kpti,kptj]))[0]

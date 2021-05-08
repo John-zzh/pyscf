@@ -183,6 +183,7 @@ def _make_j3c(mydf, cell, auxcell, kptij_lst, cderi_file):
     log.debug('Num uniq kpts %d', len(uniq_kpts))
     log.debug2('uniq_kpts %s', uniq_kpts)
     # j2c ~ (-kpt_ji | kpt_ji)
+    fused_cell.rcut *= 2
     j2c = fused_cell.pbc_intor('int2c2e', hermi=1, kpts=uniq_kpts)
 
     max_memory = max(2000, mydf.max_memory - lib.current_memory()[0])
@@ -243,7 +244,7 @@ def _make_j3c(mydf, cell, auxcell, kptij_lst, cderi_file):
     def make_kpt(uniq_kptji_id, cholesky_j2c):
         kpt = uniq_kpts[uniq_kptji_id]  # kpt = kptj - kpti
         log.debug1('kpt = %s', kpt)
-        adapted_ji_idx = numpy.where(uniq_inverse == uniq_kptji_id)[0]
+        adapted_ji_idx = numpy.where(numpy.isin(uniq_inverse, uniq_kptji_id))[0]
         adapted_kptjs = kptjs[adapted_ji_idx]
         nkptj = len(adapted_kptjs)
         log.debug1('adapted_ji_idx = %s', adapted_ji_idx)
@@ -757,7 +758,7 @@ class GDF(aft.AFTDF):
         cell = self.cell
         if cell.dimension == 2 and cell.low_dim_ft_type != 'inf_vacuum':
             raise RuntimeError('ERIs of PBC-2D systems are not positive '
-                               'definite. Current API only supports postive '
+                               'definite. Current API only supports positive '
                                'definite ERIs.')
 
         if blksize is None:

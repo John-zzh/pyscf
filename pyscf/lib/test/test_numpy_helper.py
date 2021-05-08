@@ -214,6 +214,23 @@ class KnownValues(unittest.TestCase):
         self.assertRaises(ValueError, lib.split_reshape, numpy.arange(3), ((2,2),))
         self.assertRaises(ValueError, lib.split_reshape, numpy.arange(3), (2,2))
 
+    def test_locs_to_indices(self):
+        val = lib.locs_to_indices([0, 2, 5, 6, 9, 15, 17], [0, 2, 3, 5])
+        ref = [0, 1, 5, 6, 7, 8, 15, 16]
+        self.assertTrue(numpy.array_equiv(val, ref))
+
+        def ref(locs, seg_list):
+            idx = []
+            for i in seg_list:
+                i0, i1 = locs[i:i+2]
+                idx.append(numpy.arange(i0, i1))
+            return numpy.hstack(idx)
+        numpy.random.seed(1)
+        locs = numpy.append(0, numpy.cumsum((numpy.random.rand(10) * 6).astype(int)))
+        seg_list = [2, 3, 5, 6, 8]
+        val = lib.locs_to_indices(locs, seg_list)
+        self.assertTrue(numpy.array_equiv(val, ref(locs, seg_list)))
+
 if __name__ == "__main__":
     print("Full Tests for numpy_helper")
     unittest.main()

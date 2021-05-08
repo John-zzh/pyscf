@@ -511,7 +511,7 @@ def get_lattice_Ls(cell, nimgs=None, rcut=None, dimension=None, discard=True):
     return np.asarray(Ls, order='C')
 
 
-def super_cell(cell, ncopy):
+def super_cell(cell, ncopy, wrap_around=False):
     '''Create an ncopy[0] x ncopy[1] x ncopy[2] supercell of the input cell
     Note this function differs from :fun:`cell_plus_imgs` that cell_plus_imgs
     creates images in both +/- direction.
@@ -519,6 +519,10 @@ def super_cell(cell, ncopy):
     Args:
         cell : instance of :class:`Cell`
         ncopy : (3,) array
+        wrap_around : bool
+            Put the original cell centered on the super cell. It has the
+            effects corresponding to the parameter wrap_around of
+            cell.make_kpts.
 
     Returns:
         supcell : instance of :class:`Cell`
@@ -532,15 +536,18 @@ def super_cell(cell, ncopy):
     #:            for atom, coord in cell._atom:
     #:                L = np.dot([Lx, Ly, Lz], a)
     #:                supcell.atom.append([atom, coord + L])
-    Ts = lib.cartesian_prod((np.arange(ncopy[0]),
-                             np.arange(ncopy[1]),
-                             np.arange(ncopy[2])))
+    xs = np.arange(ncopy[0])
+    ys = np.arange(ncopy[1])
+    zs = np.arange(ncopy[2])
+    if wrap_around:
+        xs[(ncopy[0]+1)//2:] -= ncopy[0]
+        ys[(ncopy[1]+1)//2:] -= ncopy[1]
+        zs[(ncopy[2]+1)//2:] -= ncopy[2]
+    Ts = lib.cartesian_prod((xs, ys, zs))
     Ls = np.dot(Ts, a)
     supcell = cell.copy()
     supcell.a = np.einsum('i,ij->ij', ncopy, a)
-    supcell.mesh = np.array([ncopy[0]*cell.mesh[0],
-                             ncopy[1]*cell.mesh[1],
-                             ncopy[2]*cell.mesh[2]])
+    supcell.mesh = np.asarray(ncopy) * np.asarray(cell.mesh)
     return _build_supcell_(supcell, cell, Ls)
 
 

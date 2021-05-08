@@ -207,7 +207,7 @@ void CVHFdot_nrs8(int (*intor)(), JKOperator **jkop, JKArray **vjk,
         } } } }
 }
 
-static JKArray *allocate_JKArray(JKOperator *op, int *shls_slice, int *ao_loc, int ncomp)
+JKArray *CVHFallocate_JKArray(JKOperator *op, int *shls_slice, int *ao_loc, int ncomp)
 {
         JKArray *jkarray = malloc(sizeof(JKArray));
         int ibra = op->ibra_shl0;
@@ -239,15 +239,15 @@ static JKArray *allocate_JKArray(JKOperator *op, int *shls_slice, int *ao_loc, i
         return jkarray;
 }
 
-static void deallocate_JKArray(JKArray *jkarray)
+void CVHFdeallocate_JKArray(JKArray *jkarray)
 {
         free(jkarray->outptr);
         free(jkarray->data);
         free(jkarray);
 }
 
-static double *allocate_and_reorder_dm(JKOperator *op, double *dm,
-                                       int *shls_slice, int *ao_loc)
+double *CVHFallocate_and_reorder_dm(JKOperator *op, double *dm,
+                                    int *shls_slice, int *ao_loc)
 {
         int ibra = op->ibra_shl0;
         int iket = op->iket_shl0;
@@ -277,8 +277,8 @@ static double *allocate_and_reorder_dm(JKOperator *op, double *dm,
         return out;
 }
 
-static void zero_out_vjk(double *vjk, JKOperator *op,
-                         int *shls_slice, int *ao_loc, int ncomp)
+void CVHFzero_out_vjk(double *vjk, JKOperator *op,
+                      int *shls_slice, int *ao_loc, int ncomp)
 {
         int obra = op->obra_shl0;
         int oket = op->oket_shl0;
@@ -291,8 +291,8 @@ static void zero_out_vjk(double *vjk, JKOperator *op,
         NPdset0(vjk, ((size_t)nbra) * nket * ncomp);
 }
 
-static void assemble_v(double *vjk, JKOperator *op, JKArray *jkarray,
-                       int *shls_slice, int *ao_loc)
+void CVHFassemble_v(double *vjk, JKOperator *op, JKArray *jkarray,
+                    int *shls_slice, int *ao_loc)
 {
         int obra = op->obra_shl0;
         int oket = op->oket_shl0;
@@ -352,7 +352,6 @@ int CVHFshls_block_partition(int *block_loc, int *shls_slice, int *ao_loc)
 }
 
 
-
 /*
  * drv loop over ij, generate eris of kl for given ij, call fjk to
  * calculate vj, vk.
@@ -376,9 +375,9 @@ void CVHFnr_direct_drv(int (*intor)(), void (*fdot)(), JKOperator **jkop,
         int idm;
         double *tile_dms[n_dm];
         for (idm = 0; idm < n_dm; idm++) {
-                zero_out_vjk(vjk[idm], jkop[idm], shls_slice, ao_loc, ncomp);
-                tile_dms[idm] = allocate_and_reorder_dm(jkop[idm], dms[idm],
-                                                        shls_slice, ao_loc);
+                CVHFzero_out_vjk(vjk[idm], jkop[idm], shls_slice, ao_loc, ncomp);
+                tile_dms[idm] = CVHFallocate_and_reorder_dm(jkop[idm], dms[idm],
+                                                            shls_slice, ao_loc);
         }
 
         const size_t di = GTOmax_shell_dim(ao_loc, shls_slice, 4);
@@ -412,9 +411,9 @@ void CVHFnr_direct_drv(int (*intor)(), void (*fdot)(), JKOperator **jkop,
         size_t i, j, k, l, r, blk_id;
         JKArray *v_priv[n_dm];
         for (i = 0; i < n_dm; i++) {
-                v_priv[i] = allocate_JKArray(jkop[i], shls_slice, ao_loc, ncomp);
+                v_priv[i] = CVHFallocate_JKArray(jkop[i], shls_slice, ao_loc, ncomp);
         }
-        double *buf = malloc(sizeof(double) * (di*di*di*di*ncomp + cache_size));
+        double *buf = malloc(sizeof(double) * (di*di*di*di*ncomp + di*di*2 + cache_size));
         double *cache = buf + di*di*di*di*ncomp;
 #pragma omp for nowait schedule(dynamic, 1)
         for (blk_id = 0; blk_id < nblock_jkl; blk_id++) {
@@ -431,8 +430,8 @@ void CVHFnr_direct_drv(int (*intor)(), void (*fdot)(), JKOperator **jkop,
 #pragma omp critical
         {
                 for (i = 0; i < n_dm; i++) {
-                        assemble_v(vjk[i], jkop[i], v_priv[i], shls_slice, ao_loc);
-                        deallocate_JKArray(v_priv[i]);
+                        CVHFassemble_v(vjk[i], jkop[i], v_priv[i], shls_slice, ao_loc);
+                        CVHFdeallocate_JKArray(v_priv[i]);
                 }
         }
         free(buf);

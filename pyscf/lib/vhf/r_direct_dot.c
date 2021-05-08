@@ -109,8 +109,8 @@ void CVHFrs1_ji_s1kl(double complex *eri,
         int dkl = dk * dl;
         double complex Z0 = 0;
         double complex Z1 = 1;
-        double complex sdm[dij];
-        double complex svj[dkl];
+        double complex *sdm = eri + dij * dkl * ncomp;
+        double complex *svj = sdm + dij;
         int ic;
 
         get_block(dm, sdm, nao, jstart, jend, istart, iend);
@@ -137,8 +137,8 @@ void CVHFrs1_lk_s1ij(double complex *eri,
         int dkl = dk * dl;
         double complex Z0 = 0;
         double complex Z1 = 1;
-        double complex sdm[dkl];
-        double complex svj[dij];
+        double complex *sdm = eri + dij * dkl * ncomp;
+        double complex *svj = sdm + dkl;
         int ic;
 
         get_block(dm, sdm, nao, lstart, lend, kstart, kend);
@@ -165,8 +165,8 @@ void CVHFrs1_jk_s1il(double complex *eri,
         int dil = di * dl;
         int dijk = djk * di;
         double complex Z1 = 1;
-        double complex sdm[djk];
-        double complex svk[dil];
+        double complex *sdm = eri + dijk * dl * ncomp;
+        double complex *svk = sdm + djk;
         int l, ic;
 
         get_blockT(dm, sdm, nao, jstart, jend, kstart, kend);
@@ -193,7 +193,7 @@ void CVHFrs1_li_s1kj(double complex *eri,
         int djk = dk * dj;
         int dijk = djk * di;
         double complex Z1 = 1;
-        double complex svk[djk];
+        double complex *svk = eri + dijk * dl * ncomp;
         int l, l0, ic;
 
         for (ic = 0; ic < ncomp; ic++) {
@@ -227,8 +227,8 @@ void CVHFrs2ij_ji_s1kl(double complex *eri,
         int dkl = dk * dl;
         double complex Z0 = 0;
         double complex Z1 = 1;
-        double complex sdm[dij];
-        double complex svj[dkl];
+        double complex *sdm = eri + dij * dkl * ncomp;
+        double complex *svj = sdm + dij;
         int ic;
 
         CVHFtimerev_ijplus(sdm, dm, tao, jstart, jend, istart, iend, nao);
@@ -271,9 +271,9 @@ void CVHFrs2ij_jk_s1il(double complex *eri,
         int dik = di * dk;
         int djl = dj * dl;
         double complex Z1 = 1;
-        double complex sdm[dik];
-        double complex svk[djl];
-        double complex *p0213 = eri + dik*djl*ncomp;
+        double complex *p0213 = eri + dik * djl * ncomp;
+        double complex *sdm = p0213 + dik * djl * ncomp;
+        double complex *svk = sdm + dik;
         int ic;
 
         CVHFtimerev_iT(sdm, dm, tao, istart, iend, kstart, kend, nao);
@@ -307,9 +307,9 @@ void CVHFrs2ij_li_s1kj(double complex *eri,
         int dik = di * dk;
         int djl = dj * dl;
         double complex Z1 = 1;
-        double complex sdm[djl];
-        double complex svk[dik];
-        double complex *p0213 = eri + dik*djl*ncomp;
+        double complex *p0213 = eri + dik * djl * ncomp;
+        double complex *sdm = p0213 + dik * djl * ncomp;
+        double complex *svk = sdm + djl;
         int ic;
 
         CVHFtimerev_j(sdm, dm, tao, lstart, lend, jstart, jend, nao);
@@ -353,8 +353,8 @@ void CVHFrs2kl_lk_s1ij(double complex *eri,
         int dkl = dk * dl;
         double complex Z0 = 0;
         double complex Z1 = 1;
-        double complex sdm[dkl];
-        double complex svj[dij];
+        double complex *sdm = eri + dij * dkl * ncomp;
+        double complex *svj = sdm + dkl;
         int ic;
 
         CVHFtimerev_ijplus(sdm, dm, tao, lstart, lend, kstart, kend, nao);
@@ -388,9 +388,9 @@ void CVHFrs2kl_jk_s1il(double complex *eri,
         int dik = di * dk;
         int djl = dj * dl;
         double complex Z1 = 1;
-        double complex sdm[djl];
-        double complex svk[dik];
-        double complex *p0213 = eri + dik*djl*ncomp;
+        double complex *p0213 = eri + dik * djl * ncomp;
+        double complex *sdm = p0213 + dik * djl * ncomp;
+        double complex *svk = sdm + djl;
         int ic;
 
         CVHFtimerev_jT(sdm, dm, tao, jstart, jend, lstart, lend, nao);
@@ -424,9 +424,9 @@ void CVHFrs2kl_li_s1kj(double complex *eri,
         int dik = di * dk;
         int djl = dj * dl;
         double complex Z1 = 1;
-        double complex sdm[dik];
-        double complex svk[djl];
-        double complex *p0213 = eri + dik*djl*ncomp;
+        double complex *p0213 = eri + dik * djl * ncomp;
+        double complex *sdm = p0213 + dik * djl * ncomp;
+        double complex *svk = sdm + dik;
         int ic;
 
         CVHFtimerev_i(sdm, dm, tao, kstart, kend, istart, iend, nao);
@@ -482,14 +482,14 @@ void CVHFrs4_jk_s1il(double complex *eri,
         int djk = dj * dk;
         int dik = di * dk;
         int djl = dj * dl;
+        int dil = di * dl;
         int dijk = dik * dj;
-        int n = (di+dj)*(dk+dl);
         double complex Z1 = 1;
-        double complex sdm[n];
-        double complex svk[n];
         double complex *peri = eri;
         double complex *pvk = vk;
-        double complex *p0213 = eri + dik*djl*ncomp;
+        double complex *p0213 = eri + dik * djl * ncomp;
+        double complex *sdm = p0213 + dik * djl * ncomp;
+        double complex *svk = sdm + dik + dil;
         int l, ic;
 
         // tjtikl
@@ -549,13 +549,12 @@ void CVHFrs4_li_s1kj(double complex *eri,
         int dik = di * dk;
         int djl = dj * dl;
         int dijk = dik * dj;
-        int n = (di+dj)*(dk+dl);
         double complex Z1 = 1;
-        double complex sdm[n];
-        double complex svk[n];
         double complex *peri = eri;
         double complex *pvk = vk;
-        double complex *p0213 = eri + dik*djl*ncomp;
+        double complex *p0213 = eri + dik * djl * ncomp;
+        double complex *sdm = p0213 + dik * djl * ncomp;
+        double complex *svk = sdm + djl + djk;
         int l, ic;
 
         // tjtikl

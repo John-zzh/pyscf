@@ -39,25 +39,105 @@ def member(kpt, kpts):
 
 def unique(kpts):
     kpts = np.asarray(kpts)
-    nkpts = len(kpts)
-    uniq_kpts = []
-    uniq_index = []
-    uniq_inverse = np.zeros(nkpts, dtype=int)
-    seen = np.zeros(nkpts, dtype=bool)
-    n = 0
-    for i, kpt in enumerate(kpts):
-        if not seen[i]:
-            uniq_kpts.append(kpt)
-            uniq_index.append(i)
-            idx = abs(kpt-kpts).sum(axis=1) < KPT_DIFF_TOL
-            uniq_inverse[idx] = n
-            seen[idx] = True
-            n += 1
-    return np.asarray(uniq_kpts), np.asarray(uniq_index), uniq_inverse
+    try:
+        digits = int(-np.log10(KPT_DIFF_TOL))
+        uniq_index, uniq_inverse = np.unique(
+            kpts.round(digits), return_index=True, return_inverse=True, axis=0)[1:3]
+        return kpts[uniq_index], uniq_index, uniq_inverse
+    except TypeError:
+        # Old numpy does not support unique of 2D array
+        nkpts = len(kpts)
+        uniq_kpts = []
+        uniq_index = []
+        uniq_inverse = np.zeros(nkpts, dtype=int)
+        seen = np.zeros(nkpts, dtype=bool)
+        n = 0
+        for i, kpt in enumerate(kpts):
+            if not seen[i]:
+                uniq_kpts.append(kpt)
+                uniq_index.append(i)
+                idx = abs(kpt-kpts).sum(axis=1) < KPT_DIFF_TOL
+                uniq_inverse[idx] = n
+                seen[idx] = True
+                n += 1
+        return np.asarray(uniq_kpts), np.asarray(uniq_index), uniq_inverse
+
+def unique_with_wrap_around(cell, kpts):
+    '''Search unique kpts in first Brillouin zone.'''
+    scaled_kpts = cell.get_scaled_kpts(kpts).round(5)
+    scaled_kpts = np.modf(scaled_kpts)[0]
+    scaled_kpts[scaled_kpts > .5] -= 1
+    scaled_kpts[scaled_kpts <= -.5] += 1
+
+    uniq_index, uniq_inverse = unique(scaled_kpts)[1:3]
+    uniq_kpts = kpts[uniq_index]
+    return uniq_kpts, uniq_index, uniq_inverse
+
+def group_by_conj_pairs(cell, kpts, wrap_around=True):
+    '''Find all conjugation k-point pairs in the input kpts'''
+    if wrap_around:
+        scaled = cell.get_scaled_kpts(kpts)
+        scaled = np.modf(scaled)[0]
+        scaled_conj = -scaled
+        scaled[scaled.round(5) > .5] -= 1
+        scaled[scaled.round(5) <= -.5] += 1
+        scaled_conj[scaled_conj.round(5) > .5] -= 1
+        scaled_conj[scaled_conj.round(5) <= -.5] += 1
+        kpts = cell.get_abs_kpts(scaled)
+        kpts_conj = cell.get_abs_kpts(scaled_conj)
+    else:
+        scaled = cell.get_scaled_kpts(kpts)
+        scaled_conj = -scaled
+        kpts_conj = -kpts
+
+    scaled = scaled.round(5)
+    scaled_conj = scaled_conj.round(5)
+    self_conj_mask = abs(scaled - scaled_conj).max(axis=1) < KPT_DIFF_TOL
+    idx_pairs = [(k, None) for k in np.where(self_conj_mask)[0]]
+
+    seen = self_conj_mask
+    for k, (skpt, skpt_conj) in enumerate(zip(scaled, scaled_conj)):
+        if seen[k]:
+            continue
+
+        seen[k] = True
+        conj_idx = member(skpt_conj, scaled)
+        if conj_idx.size == 0:
+            # conjugated k-point not in the kpts set
+            idx_pairs.append((k, None))
+        else:
+            seen[conj_idx[0]] = True
+            idx_pairs.append((k, conj_idx[0]))
+
+    kpts_pairs = []
+    for i, j in idx_pairs:
+        if j is None:
+            kpts_pairs.append((kpts[i], None))
+        else:
+            kpts_pairs.append((kpts[i], kpts[j]))
+    return idx_pairs, kpts_pairs
 
 def loop_kkk(nkpts):
     range_nkpts = range(nkpts)
     return itertools.product(range_nkpts, range_nkpts, range_nkpts)
+
+def conj_mapping(cell, kpts):
+    '''Find the mapping index: -kpts = kpts[index]'''
+    scaled_kpts = cell.get_scaled_kpts(kpts).round(5)
+    scaled_kpts = np.modf(scaled_kpts)[0]
+    scaled_kpts[scaled_kpts > .5] -= 1
+    scaled_kpts[scaled_kpts <= -.5] += 1
+    uniq_kpts, index, inverse = unique(scaled_kpts)
+    if len(index) != len(inverse):
+        raise KPointSymmetryError('duplicated k points')
+
+    minus_kpts = -scaled_kpts
+    minus_kpts[minus_kpts == -.5] = .5
+    uniq_m_kpts, m_index, m_inverse = unique(minus_kpts)
+    if abs(uniq_kpts - uniq_m_kpts).max() > KPT_DIFF_TOL:
+        raise KPointSymmetryError('k points not symmetric')
+
+    return index[m_inverse]
 
 def get_kconserv(cell, kpts):
     r'''Get the momentum conservation array for a set of k-points.
@@ -351,3 +431,5 @@ class KptsHelper(lib.StreamObject):
         if operation == 3:
             return np.conj(eri_kpt.transpose(3,2,1,0))
 
+class KPointSymmetryError(RuntimeError):
+    pass
