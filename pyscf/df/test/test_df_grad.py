@@ -52,12 +52,12 @@ class KnownValues(unittest.TestCase):
         self.assertAlmostEqual(abs(gref - g1).max(), 0, 5)
 
     def test_rks_grad(self):
-        dft.numint.NumInt.libxc = dft.xcfun
         gref = mol.RKS.run(xc='b3lyp').nuc_grad_method().kernel()
         g1 = mol.RKS.density_fit().run(xc='b3lyp').nuc_grad_method().kernel()
         self.assertAlmostEqual(abs(gref - g1).max(), 0, 4)
 
     def test_uks_grad(self):
+        dft.numint.NumInt.libxc = dft.xcfun
         gref = mol.UKS.run(xc='b3lyp').nuc_grad_method().kernel()
         g1 = mol.UKS.density_fit().run(xc='b3lyp').nuc_grad_method().kernel()
         self.assertAlmostEqual(abs(gref - g1).max(), 0, 4)
