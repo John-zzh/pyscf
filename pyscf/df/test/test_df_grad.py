@@ -24,6 +24,7 @@ from pyscf import gto
 from pyscf import scf
 from pyscf import ao2mo
 from pyscf import df
+from pyscf import dft
 
 mol = gto.Mole()
 mol.build(
@@ -51,6 +52,7 @@ class KnownValues(unittest.TestCase):
 #        self.assertAlmostEqual(abs(gref - g1).max(), 0, 5)
 
     def test_rks_grad(self):
+        dft.numint.NumInt.libxc = dft.xcfun
         gref = mol.RKS.run(xc='b3lyp').nuc_grad_method().kernel()
         g1 = mol.RKS.density_fit().run(xc='b3lyp').nuc_grad_method().kernel()
         self.assertAlmostEqual(abs(gref - g1).max(), 0, 4)
