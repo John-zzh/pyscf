@@ -6,7 +6,7 @@ ulimit -s 20000
 echo 'pbc_tools_pbc_fft_engine = "NUMPY"' > .pyscf_conf.py
 echo "dftd3_DFTD3PATH = './pyscf/lib/deps/lib'" >> .pyscf_conf.py
 
-nosetests pyscf/ -v --with-timer --with-cov --cov-report xml --cov-report term --cov-config .coveragerc --cov pyscf \
+nosetests pyscf/df -v --with-timer --with-cov --cov-report xml --cov-report term --cov-config .coveragerc --cov pyscf \
     --exclude-dir=examples --exclude-dir=pyscf/pbc/grad \
     -e test_bz \
     -e h2o_vdz \
