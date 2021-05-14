@@ -50,7 +50,7 @@ void GTOint2c(int (*intor)(), double *mat, int comp, int hermi,
         int dims[] = {naoi, naoj};
         int ish, jsh, ij, i0, j0;
         int shls[2];
-        double *cache = malloc(sizeof(double) * cache_size);
+        double *cache = malloc(sizeof(double) * (cache_size+20000));
 #pragma omp for schedule(dynamic, 4)
         for (ij = 0; ij < nish*njsh; ij++) {
                 ish = ij / njsh;
@@ -99,7 +99,7 @@ void GTOint2c_spinor(int (*intor)(), double complex *mat, int comp, int hermi,
         int dims[] = {naoi, naoj};
         int ish, jsh, ij, i0, j0;
         int shls[2];
-        double *cache = malloc(sizeof(double) * cache_size);
+        double *cache = malloc(sizeof(double) * (cache_size+20000));
 #pragma omp for schedule(dynamic, 4)
         for (ij = 0; ij < nish*njsh; ij++) {
                 ish = ij / njsh;

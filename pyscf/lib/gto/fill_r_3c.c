@@ -192,7 +192,7 @@ void GTOr3c_drv(int (*intor)(), void (*fill)(), double complex *eri, int comp,
 {
         int ish, jsh, ij;
         double complex *buf = malloc(sizeof(double complex) *
-                                     (di*di*di*comp + cache_size/2));
+                                     (di*di*di*comp + cache_size/2 + 24));
 #pragma omp for schedule(dynamic)
         for (ij = 0; ij < nish*njsh; ij++) {
                 ish = ij / njsh;
