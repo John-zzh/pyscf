@@ -45,10 +45,15 @@ class KnownValues(unittest.TestCase):
 #        g1 = scf.RHF(mol).density_fit().run().nuc_grad_method().kernel()
 #        self.assertAlmostEqual(abs(gref - g1).max(), 0, 5)
 
-    def test_uks_grad(self):
-        gref = mol.UKS.run(xc='b3lyp').nuc_grad_method().kernel()
-        g1 = mol.UKS.density_fit().run(xc='b3lyp').nuc_grad_method().kernel()
-        self.assertAlmostEqual(abs(gref - g1).max(), 0, 4)
+    def test_uhf_grad(self):
+        gref = scf.UHF(mol).run().nuc_grad_method().kernel()
+        g1 = scf.UHF(mol).density_fit().run().nuc_grad_method().kernel()
+        self.assertAlmostEqual(abs(gref - g1).max(), 0, 5)
+
+#    def test_uks_grad(self):
+#        gref = mol.UKS.run(xc='b3lyp').nuc_grad_method().kernel()
+#        g1 = mol.UKS.density_fit().run(xc='b3lyp').nuc_grad_method().kernel()
+#        self.assertAlmostEqual(abs(gref - g1).max(), 0, 4)
 
 if __name__ == "__main__":
     print("Full Tests for df.grad")
