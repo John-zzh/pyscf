@@ -104,7 +104,8 @@ def get_vxc(ni, mol, grids, xc_code, dms, relativity=0, hermi=1,
                 in ni.block_loop(mol, grids, nao, ao_deriv, max_memory):
             for idm in range(nset):
                 rho = make_rho(idm, ao[:4], mask, 'GGA')
-                rho[:,rho[0] < 1e-10] = 0
+                #idx = rho[0] < 1e-10
+                #rho[:,idx] = 0
                 vxc = ni.eval_xc(xc_code, rho, 0, relativity, 1,
                                  verbose=verbose)[1]
                 wv = numint._rks_gga_wv0(rho, vxc, weight)
