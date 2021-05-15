@@ -105,6 +105,7 @@ def get_vxc(ni, mol, grids, xc_code, dms, relativity=0, hermi=1,
             for idm in range(nset):
                 rho = make_rho(idm, ao[:4], mask, 'GGA')
                 idx = rho[0] < 1e-10
+                print(rho[:,(rho[0] > 1e-10) & (rho[1:].sum(axis=0) < 1e-20)])
                 rho[:,idx] = 0
                 vxc = ni.eval_xc(xc_code, rho, 0, relativity, 1,
                                  verbose=verbose)[1]

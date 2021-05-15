@@ -853,8 +853,9 @@ def nr_rks(ni, mol, grids, xc_code, dms, relativity=0, hermi=0,
             aow = numpy.ndarray(ao[0].shape, order='F', buffer=aow)
             for idm in range(nset):
                 rho = make_rho(idm, ao, mask, 'GGA')
-                idx = rho[0] < 1e-10
+                idx = rho[1:].sum(axis=0) < 1e-14
                 rho[:,idx] = 0
+                #print(rho[:,(rho[0] > 1e-10) & (rho[1:].sum(axis=0) < 1e-20)])
                 exc, vxc = ni.eval_xc(xc_code, rho, spin=0,
                                       relativity=relativity, deriv=1,
                                       verbose=verbose)[:2]

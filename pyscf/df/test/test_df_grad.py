@@ -52,7 +52,7 @@ class KnownValues(unittest.TestCase):
 #        self.assertAlmostEqual(abs(gref - g1).max(), 0, 5)
 
     def test_rks_grad(self):
-        gref = mol.RKS.run(xc='lda,lyp').nuc_grad_method().kernel()
+        gref = mol.RKS.run(xc='lda,lyp')#.nuc_grad_method().kernel()
         #mf = mol.RKS.density_fit()
         #g1 = mf.run(xc='b3lyp').nuc_grad_method().kernel()
         #self.assertAlmostEqual(abs(gref - g1).max(), 0, 4)
