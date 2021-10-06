@@ -1,5 +1,5 @@
 #!/usr/bin/env python
-# Copyright 2014-2019 The PySCF Developers. All Rights Reserved.
+# Copyright 2014-2021 The PySCF Developers. All Rights Reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -48,29 +48,27 @@ def get_veff(ks, mol=None, dm=None, dm_last=0, vhf_last=0, hermi=1):
     if ks.grids.coords is None:
         ks.grids.build(with_non0tab=True)
         if ks.small_rho_cutoff > 1e-20 and ground_state:
-            ks.grids = rks.prune_small_rho_grids_(ks, mol, dm_a+dm_b, ks.grids)
+            ks.grids = rks.prune_small_rho_grids_(ks, mol, dm, ks.grids)
         t0 = logger.timer(ks, 'setting up grids', *t0)
+
     if ks.nlc != '':
         if ks.nlcgrids.coords is None:
             ks.nlcgrids.build(with_non0tab=True)
             if ks.small_rho_cutoff > 1e-20 and ground_state:
-                ks.nlcgrids = rks.prune_small_rho_grids_(ks, mol, dm_a+dm_b, ks.nlcgrids)
+                ks.nlcgrids = rks.prune_small_rho_grids_(ks, mol, dm, ks.nlcgrids)
             t0 = logger.timer(ks, 'setting up nlc grids', *t0)
 
     max_memory = ks.max_memory - lib.current_memory()[0]
     ni = ks._numint
-    n, exc, vxc = ni.nr_uks(mol, ks.grids, ks.xc, (dm_a,dm_b), max_memory=max_memory)
+    n, exc, vxc = ni.nr_vxc(mol, ks.grids, ks.xc, dm, max_memory=max_memory)
     if ks.nlc != '':
         assert('VV10' in ks.nlc.upper())
-        _, enlc, vnlc = ni.nr_rks(mol, ks.nlcgrids, ks.xc+'__'+ks.nlc, dm_a+dm_b,
+        _, enlc, vnlc = ni.nr_vxc(mol, ks.nlcgrids, ks.xc+'__'+ks.nlc, dm,
                                   max_memory=max_memory)
         exc += enlc
         vxc += vnlc
     logger.debug(ks, 'nelec by numeric integration = %s', n)
     t0 = logger.timer(ks, 'vxc', *t0)
-    if vxc.ndim == 4:
-        raise NotImplementedError
-    vxc = numpy.asarray(scipy.linalg.block_diag(*vxc), dtype=dm.dtype)
 
     #enabling range-separated hybrids
     omega, alpha, hyb = ni.rsh_and_hybrid_coeff(ks.xc, spin=mol.spin)
@@ -120,8 +118,10 @@ def get_veff(ks, mol=None, dm=None, dm_last=0, vhf_last=0, hermi=1):
 class GKS(rks.KohnShamDFT, ghf.GHF):
     '''Generalized Kohn-Sham'''
     def __init__(self, mol, xc='LDA,VWN'):
+        from pyscf.dft.numint2c import NumInt2C
         ghf.GHF.__init__(self, mol)
         rks.KohnShamDFT.__init__(self, xc)
+        self._numint = NumInt2C()
 
     def dump_flags(self, verbose=None):
         ghf.GHF.dump_flags(self, verbose)
@@ -130,6 +130,13 @@ class GKS(rks.KohnShamDFT, ghf.GHF):
 
     get_veff = get_veff
     energy_elec = rks.energy_elec
+
+    @property
+    def collinear(self):
+        return self._numint.collinear
+    @collinear.setter
+    def collinear(self, val):
+        self._numint.collinear = val
 
     def nuc_grad_method(self):
         raise NotImplementedError

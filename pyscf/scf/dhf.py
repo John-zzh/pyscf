@@ -403,6 +403,7 @@ def get_grad(mo_coeff, mo_occ, fock_ao):
     return g.ravel()
 
 
+# Kramers unrestricted Dirac-Hartree-Fock
 class DHF(hf.SCF):
     __doc__ = hf.SCF.__doc__ + '''
     Attributes for Dirac-Hartree-Fock
@@ -846,7 +847,7 @@ def _proj_dmll(mol_nr, dm_nr, mol):
 
     n2c = proj.shape[0]
     n4c = n2c * 2
-    dm = numpy.zeros((n4c,n4c), dtype=complex)
+    dm = numpy.zeros((n4c,n4c), dtype=numpy.complex128)
     # *.5 because alpha and beta are summed in project_mo_nr2r
     dm_ll = reduce(numpy.dot, (proj, dm_nr*.5, proj.T.conj()))
     dm[:n2c,:n2c] = (dm_ll + time_reversal_matrix(mol, dm_ll)) * .5

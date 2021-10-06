@@ -70,6 +70,9 @@ def get_veff(ks, mol=None, dm=None, dm_last=0, vhf_last=0, hermi=1):
             ks.grids = rks.prune_small_rho_grids_(ks, mol, dm, ks.grids)
         t0 = logger.timer(ks, 'setting up grids', *t0)
 
+    if ks.nlc != '':
+        raise NotImplementedError(ks.nlc)
+
     if hermi == 2:  # because rho = 0
         n, exc, vxc = 0, 0, 0
     else:
@@ -127,7 +130,7 @@ energy_elec = rks.energy_elec
 
 
 class DKS(rks.KohnShamDFT, dhf.DHF):
-    '''Dirac-Kohn-Sham'''
+    '''Kramers unrestricted Dirac-Kohn-Sham'''
     def __init__(self, mol, xc='LDA,VWN'):
         from pyscf.dft import r_numint
         dhf.DHF.__init__(self, mol)
@@ -151,6 +154,13 @@ class DKS(rks.KohnShamDFT, dhf.DHF):
         return x2chf
     x2c = x2c1e
 
+    @property
+    def collinear(self):
+        return self._numint.collinear
+    @collinear.setter
+    def collinear(self, val):
+        self._numint.collinear = val
+
 UKS = UDKS = DKS
 
 class RDKS(DKS, dhf.RDHF):
@@ -165,5 +175,12 @@ class RDKS(DKS, dhf.RDHF):
         x2chf._keys = self._keys.union(x2c_keys)
         return x2chf
     x2c = x2c1e
+
+    @property
+    def collinear(self):
+        return self._numint.collinear
+    @collinear.setter
+    def collinear(self, val):
+        self._numint.collinear = val
 
 RKS = RDKS
