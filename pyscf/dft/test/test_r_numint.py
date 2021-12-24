@@ -90,8 +90,26 @@ class KnownValues(unittest.TestCase):
         #?self.assertAlmostEqual(float(vxc[1][0,0]), 0, 7)
         #?self.assertAlmostEqual(float(vxc[1][0,1]), 0, 7)
 
-#    def test_vxc(self):
-#    def test_fxc(self):
+    def test_vxc(self):
+        numpy.random.seed(10)
+        nao = mol.nao_2c()
+        n4c = nao * 2
+        dms =(numpy.random.random((2,n4c,n4c)) +
+              numpy.random.random((2,n4c,n4c)) * 1j)
+        dms = dms + dms.transpose(0, 2, 1).conj()
+        grids = dft.Grids(mol)
+        grids.atom_grid = {"H": (50, 110), "O": (50, 110)}
+        grids.prune = False
+
+        v = r_numint.RNumInt().r_vxc(mol, grids, 'lda,', dms, hermi=1)[2]
+        self.assertAlmostEqual(lib.fp(v), -0.023694712341023827+1.6530188048162782j, 12)
+
+        v = r_numint.RNumInt().r_vxc(mol, grids, 'HF', dms, hermi=0)[2]
+        self.assertAlmostEqual(abs(v).max(), 0, 9)
+
+        v = r_numint.RNumInt().r_vxc(mol, grids, '', dms, hermi=0)[2]
+        self.assertAlmostEqual(abs(v).max(), 0, 9)
+
 
 if __name__ == "__main__":
     print("Test r_numint")

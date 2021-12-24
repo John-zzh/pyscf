@@ -218,12 +218,14 @@ def r_vxc(ni, mol, grids, xc_code, dms, spin=0, relativity=0, hermi=1,
                                              mask, shls_slice, ao_loc)
                 if with_s:
                     matSS[idm] += _vxc2x2_to_mat_S(mol, ao[2:], weight, rho, vrho,
-                                                 mask, shls_slice, ao_loc)
+                                                   mask, shls_slice, ao_loc)
                 rho = exc = vxc = vrho = None
     elif xctype == 'GGA':
         raise NotImplementedError
+    elif xctype == 'HF':
+        pass
     else:
-        raise NotImplementedError
+        raise NotImplementedError(f'r_numint.r_vxc for functional {xc_code}')
 
     if with_s:
         c1 = .5 / lib.param.LIGHT_SPEED
@@ -255,8 +257,12 @@ def get_rho(ni, mol, dm, grids, max_memory=2000):
 
 class RNumInt(numint.NumInt):
 
-    r_vxc = nr_vxc = r_vxc
+    r_vxc = r_vxc
     get_rho = get_rho
+
+    def nr_vxc(self, mol, grids, xc_code, dms, spin=0, relativity=0, hermi=0,
+               max_memory=2000, verbose=None):
+        raise RuntimeError('nr_vxc is called in RNumInt class')
 
     def eval_ao(self, mol, coords, deriv=0, with_s=True, shls_slice=None,
                 non0tab=None, out=None, verbose=None):
