@@ -111,3 +111,6 @@ def DKS(mol, xc='LDA,VWN'):
         return dks.RDKS(mol, xc=xc)
     else:
         return dks.UDKS(mol, xc=xc)
+
+UDKS = dks.UDKS
+RDKS = dks.RDKS

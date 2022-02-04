@@ -77,13 +77,15 @@ class NumInt2C(numint._NumIntMixin):
         DFT hessian module etc.
         '''
         xctype = self._xc_type(xc_code)
+    if xctype == 'MGGA':
+        ao_deriv = 2
+        raise NotImplementedError('NLC')
+    elif xctype == 'GGA':
+        ao_deriv = 1
+    elif xctype == 'NLC':
+        raise NotImplementedError('NLC')
+    else:
         ao_deriv = 0
-        if xctype == 'GGA':
-            ao_deriv = 1
-        elif xctype == 'NLC':
-            raise NotImplementedError('NLC')
-        elif xctype == 'MGGA':
-            raise NotImplementedError('meta-GGA')
 
         nao = mo_coeff.shape[0] // 2
         dm = np.dot(mo_coeff * mo_occ, mo_coeff.conj().T)
@@ -123,9 +125,9 @@ class NumInt2C(numint._NumIntMixin):
         dms_a = dms[...,:nao,:nao].real
         dms_b = dms[...,nao:,nao:].real
         ni = self.view(numint.NumInt)
-        vmat = numint.nr_uks_fxc(ni, mol, grids, xc_code, dm0, (dms_a, dms_b),
-                                 relativity=0, hermi=0, rho0=None, vxc=None, fxc=None,
-                                 max_memory=2000, verbose=None)
+        vmat = numint.nr_uks_fxc(
+            ni, mol, grids, xc_code, dm0, (dms_a, dms_b), relativity=0, hermi=0,
+            rho0=None, vxc=None, fxc=None, max_memory=2000, verbose=None)
         fxcmat = np.zeros_like(dms)
         fxcmat[...,:nao,:nao] = vmat[0]
         fxcmat[...,nao:,nao:] = vmat[1]
