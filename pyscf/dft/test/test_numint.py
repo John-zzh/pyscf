@@ -50,8 +50,8 @@ mol1.basis = 'ccpvtz'
 mol1.build()
 
 h2o = gto.Mole()
-#h2o.verbose = 5
-#h2o.output = '/dev/null'
+h2o.verbose = 5
+h2o.output = '/dev/null'
 h2o.atom = [
     ["O" , (0. , 0.     , 0.)],
     [1   , (0. , -0.757 , 0.587)],
