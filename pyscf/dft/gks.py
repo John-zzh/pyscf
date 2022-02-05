@@ -1,5 +1,5 @@
 #!/usr/bin/env python
-# Copyright 2014-2021 The PySCF Developers. All Rights Reserved.
+# Copyright 2014-2022 The PySCF Developers. All Rights Reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -30,45 +30,58 @@ from pyscf.dft import rks
 
 
 def get_veff(ks, mol=None, dm=None, dm_last=0, vhf_last=0, hermi=1):
-    '''Coulomb + XC functional for GKS.
+    '''Coulomb + XC functional
+
+    .. note::
+        This function will change the ks object.
+
+    Args:
+        ks : an instance of :class:`RKS`
+            XC functional are controlled by ks.xc attribute.  Attribute
+            ks.grids might be initialized.
+        dm : ndarray or list of ndarrays
+            A density matrix or a list of density matrices
+
+    Kwargs:
+        dm_last : ndarray or a list of ndarrays or 0
+            The density matrix baseline.  If not 0, this function computes the
+            increment of HF potential w.r.t. the reference HF potential matrix.
+        vhf_last : ndarray or a list of ndarrays or 0
+            The reference Vxc potential matrix.
+        hermi : int
+            Whether J, K matrix is hermitian
+
+            | 0 : no hermitian or symmetric
+            | 1 : hermitian
+            | 2 : anti-hermitian
+
+    Returns:
+        matrix Veff = J + Vxc.  Veff can be a list matrices, if the input
+        dm is a list of density matrices.
     '''
     if mol is None: mol = ks.mol
     if dm is None: dm = ks.make_rdm1()
+    ks.initialize_grids(mol, dm)
+
     t0 = (logger.process_clock(), logger.perf_counter())
 
-    ground_state = (isinstance(dm, numpy.ndarray) and dm.ndim == 2)
+    ground_state = isinstance(dm, numpy.ndarray) and dm.ndim == 2
 
-    assert(hermi == 1)
-    dm = numpy.asarray(dm)
-    nso = dm.shape[-1]
-    nao = nso // 2
-    dm_a = dm[...,:nao,:nao].real
-    dm_b = dm[...,nao:,nao:].real
-
-    if ks.grids.coords is None:
-        ks.grids.build(with_non0tab=True)
-        if ks.small_rho_cutoff > 1e-20 and ground_state:
-            ks.grids = rks.prune_small_rho_grids_(ks, mol, dm, ks.grids)
-        t0 = logger.timer(ks, 'setting up grids', *t0)
-
-    if ks.nlc != '':
-        if ks.nlcgrids.coords is None:
-            ks.nlcgrids.build(with_non0tab=True)
-            if ks.small_rho_cutoff > 1e-20 and ground_state:
-                ks.nlcgrids = rks.prune_small_rho_grids_(ks, mol, dm, ks.nlcgrids)
-            t0 = logger.timer(ks, 'setting up nlc grids', *t0)
-
-    max_memory = ks.max_memory - lib.current_memory()[0]
-    ni = ks._numint
-    n, exc, vxc = ni.nr_vxc(mol, ks.grids, ks.xc, dm, max_memory=max_memory)
-    if ks.nlc != '':
-        assert('VV10' in ks.nlc.upper())
-        _, enlc, vnlc = ni.nr_vxc(mol, ks.nlcgrids, ks.xc+'__'+ks.nlc, dm,
-                                  max_memory=max_memory)
-        exc += enlc
-        vxc += vnlc
-    logger.debug(ks, 'nelec by numeric integration = %s', n)
-    t0 = logger.timer(ks, 'vxc', *t0)
+    if hermi == 2:  # because rho = 0
+        n, exc, vxc = 0, 0, 0
+    else:
+        max_memory = ks.max_memory - lib.current_memory()[0]
+        ni = ks._numint
+        n, exc, vxc = ni.get_vxc(mol, ks.grids, ks.xc, dm,
+                                 hermi=hermi, max_memory=max_memory)
+        if ks.nlc != '':
+            assert('VV10' in ks.nlc.upper())
+            _, enlc, vnlc = ni.get_vxc(mol, ks.nlcgrids, ks.xc+'__'+ks.nlc, dm,
+                                       hermi=hermi, max_memory=max_memory)
+            exc += enlc
+            vxc += vnlc
+        logger.debug(ks, 'nelec by numeric integration = %s', n)
+        t0 = logger.timer(ks, 'vxc', *t0)
 
     #enabling range-separated hybrids
     omega, alpha, hyb = ni.rsh_and_hybrid_coeff(ks.xc, spin=mol.spin)

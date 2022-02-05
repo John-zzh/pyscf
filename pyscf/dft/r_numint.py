@@ -137,13 +137,13 @@ def eval_rho(mol, ao, dm, non0tab=None, xctype='LDA', hermi=0, verbose=None):
     rho, m = rho_m[0], rho_m[1:]
     return rho, m
 
-def _ncol_lda_vxc_mat(mol, ao, weight, rho, vxc, non0tab, shls_slice, ao_loc):
+def _ncol_lda_vxc_mat(mol, ao, weight, rho, vxc, non0tab, shls_slice, ao_loc,
+                      on_LL_block=True):
     '''Vxc matrix of non-collinear LDA'''
     aoa, aob = ao
     r, m = rho
     vrho = vxc[0]
     vr, vm = vrho.T
-    aow = numpy.empty_like(aoa)
     s = lib.norm(m, axis=0)
 
     idx = s < 1e-20
@@ -153,71 +153,40 @@ def _ncol_lda_vxc_mat(mol, ao, weight, rho, vxc, non0tab, shls_slice, ao_loc):
 
     # * .5 because of v+v.conj().T in r_vxc
     wv = .5 * weight * vr
-    ws *= .5
+    if on_LL_block:
+        ws *= .5
+    else:  # for SS block
+        # flip the sign for small components because
+        # M = \beta\Sigma = [sigma,  0    ]
+        #                   [0    , -sigma]
+        ws *= -.5
 
     # einsum('g,g,xgi,xgj->ij', vr, weight, ao, ao)
     # + einsum('xy,g,g,xgi,ygj->ij', sx, vm*m[0]/s, weight, ao, ao)
     # + einsum('xy,g,g,xgi,ygj->ij', sy, vm*m[1]/s, weight, ao, ao)
     # + einsum('xy,g,g,xgi,ygj->ij', sz, vm*m[2]/s, weight, ao, ao)
-    aow = numpy.einsum('pi,p->pi', aoa, ws*m[0], out=aow)  # Mx
+    aow = None
+    aow = _scale_ao(aoa, ws*m[0], out=aow)  # Mx
     tmp = _dot_ao_ao(mol, aob, aow, non0tab, shls_slice, ao_loc)
     mat = tmp + tmp.conj().T
-    aow = numpy.einsum('pi,p->pi', aoa, ws*m[1], out=aow)  # My
+    aow = _scale_ao(aoa, ws*m[1], out=aow)  # My
     tmp = _dot_ao_ao(mol, aob, aow, non0tab, shls_slice, ao_loc)
     mat+= (tmp - tmp.conj().T) * 1j
-    aow = numpy.einsum('pi,p->pi', aoa, wv, out=aow)
-    aow+= numpy.einsum('pi,p->pi', aoa, ws*m[2])  # Mz
+    aow = _scale_ao(aoa, wv, out=aow)
+    aow+= _scale_ao(aoa, ws*m[2])  # Mz
     mat+= _dot_ao_ao(mol, aoa, aow, non0tab, shls_slice, ao_loc)
-    aow = numpy.einsum('pi,p->pi', aob, wv, out=aow)
-    aow-= numpy.einsum('pi,p->pi', aob, ws*m[2])  # Mz
+    aow = _scale_ao(aob, wv, out=aow)
+    aow-= _scale_ao(aob, ws*m[2])  # Mz
     mat+= _dot_ao_ao(mol, aob, aow, non0tab, shls_slice, ao_loc)
     return mat
 
-def _ncol_lda_vxc_matSS(mol, ao, weight, rho, vxc, non0tab, shls_slice, ao_loc):
-    aoa, aob = ao
-    r, m = rho
-    vrho = vxc[0]
-    vr, vm = vrho.T
-    aow = numpy.empty_like(aoa)
-
-    s = lib.norm(m, axis=0)
-    idx = s < 1e-20
-    with numpy.errstate(divide='ignore',invalid='ignore'):
-        ws = vm * weight / s
-    ws[idx] = 0
-    ws = vm*weight
-
-    # * .5 because of v+v.conj().T in r_vxc
-    wv = .5 * weight * vr
-    ws *= .5
-
-    aow = numpy.einsum('pi,p->pi', aoa, ws*m[0], out=aow)  # Mx
-    tmp = _dot_ao_ao(mol, aob, aow, non0tab, shls_slice, ao_loc)
-    mat = -tmp - tmp.T.conj()
-    aow = numpy.einsum('pi,p->pi', aoa, ws*m[1], out=aow)  # My
-    tmp = _dot_ao_ao(mol, aob, aow, non0tab, shls_slice, ao_loc)
-    mat-= (tmp - tmp.T.conj()) * 1j
-    aow = numpy.einsum('pi,p->pi', aoa, wv, out=aow)
-    aow-= numpy.einsum('pi,p->pi', aoa, ws*m[2])  # Mz
-    mat+= _dot_ao_ao(mol, aoa, aow, non0tab, shls_slice, ao_loc)
-    aow = numpy.einsum('pi,p->pi', aob, wv, out=aow)
-    aow+= numpy.einsum('pi,p->pi', aob, ws*m[2])  # Mz
-    mat+= _dot_ao_ao(mol, aob, aow, non0tab, shls_slice, ao_loc)
-    return mat
-
-def _ncol_gga_vxc_mat(mol, ao, weight, rho, vxc, non0tab, shls_slice, ao_loc):
+def _ncol_gga_vxc_mat(mol, ao, weight, rho, vxc, non0tab, shls_slice, ao_loc,
+                      on_LL_block=True):
     '''Vxc matrix of non-collinear GGA'''
     raise NotImplementedError
 
-def _ncol_gga_vxc_matSS(mol, ao, weight, rho, vxc, non0tab, shls_slice, ao_loc):
-    '''Vxc matrix of non-collinear GGA'''
-    raise NotImplementedError
-
-def _ncol_mgga_vxc_mat(mol, ao, weight, rho, vxc, non0tab, shls_slice, ao_loc):
-    '''Vxc matrix of non-collinear MGGA'''
-    raise NotImplementedError
-
-def _ncol_mgga_vxc_matSS(mol, ao, weight, rho, vxc, non0tab, shls_slice, ao_loc):
+def _ncol_mgga_vxc_mat(mol, ao, weight, rho, vxc, non0tab, shls_slice, ao_loc,
+                       on_LL_block=True):
     '''Vxc matrix of non-collinear MGGA'''
     raise NotImplementedError
 
@@ -227,78 +196,52 @@ def _dks_gga_wv0(rho, vxc, weight):
     rhob = (r - mz) * .5
     return numint._uks_gga_wv0((rhoa, rhob), vxc, weight)
 
-def _col_lda_vxc_mat(mol, ao, weight, rho, vxc, non0tab, shls_slice, ao_loc):
+def _col_lda_vxc_mat(mol, ao, weight, rho, vxc, non0tab, shls_slice, ao_loc,
+                     on_LL_block=True):
     '''Vxc matrix of collinear LDA'''
     vrho = vxc[0]
     aoa, aob = ao
-    wva, wvb = .5 * weight * vrho.T
+    if on_LL_block:
+        wva, wvb = .5 * weight * vrho.T
+    else:  # for SS block
+        # v_rho = (vxc_a + vxc_b) * .5
+        # v_mz  = (vxc_a - vxc_b) * .5
+        # For small components, M = \beta\Sigma leads to
+        # (v_rho - sigma_z*v_mz) = [vxc_b, 0    ]
+        #                          [0    , vxc_a]
+        wvb, wva = .5 * weight * vrho.T
     mat  = _dot_ao_ao(mol, aoa, _scale_ao(aoa, wva), non0tab, shls_slice, ao_loc)
     mat += _dot_ao_ao(mol, aob, _scale_ao(aob, wvb), non0tab, shls_slice, ao_loc)
     return mat
 
-def _col_lda_vxc_matSS(mol, ao, weight, rho, vxc, non0tab, shls_slice, ao_loc):
-    '''Vxc matrix of collinear LDA'''
-    # v_rho = (vxc_a + vxc_b) * .5
-    # v_mz  = (vxc_a - vxc_b) * .5
-    # For small components, M = |\beta\Sigma| leads to
-    # (v_rho - sigma_z*v_mz) =
-    #     [[vxc_b, 0    ]
-    #      [0    , vxc_a]]
-    vrho = vxc[0]
-    wvb, wva = .5 * weight * vrho.T
-    aoa, aob = ao
-    mat  = _dot_ao_ao(mol, aoa, _scale_ao(aoa, wva), non0tab, shls_slice, ao_loc)
-    mat += _dot_ao_ao(mol, aob, _scale_ao(aob, wvb), non0tab, shls_slice, ao_loc)
-    return mat
-
-def _col_gga_vxc_mat(mol, ao, weight, rho, vxc, non0tab, shls_slice, ao_loc):
+def _col_gga_vxc_mat(mol, ao, weight, rho, vxc, non0tab, shls_slice, ao_loc,
+                     on_LL_block=True):
     '''Vxc matrix of collinear GGA'''
-    wva, wvb = _dks_gga_wv0(rho, vxc, weight)
+    if on_LL_block:
+        wva, wvb = _dks_gga_wv0(rho, vxc, weight)
+    else:  # for SS block
+        wvb, wva = _dks_gga_wv0(rho, vxc, weight)
     aoa, aob = ao
     mat  = _dot_ao_ao(mol, aoa[0], _scale_ao(aoa[:4], wva[:4]), non0tab, shls_slice, ao_loc)
     mat += _dot_ao_ao(mol, aob[0], _scale_ao(aob[:4], wvb[:4]), non0tab, shls_slice, ao_loc)
     return mat
 
-def _col_gga_vxc_matSS(mol, ao, weight, rho, vxc, non0tab, shls_slice, ao_loc):
-    '''Vxc matrix of collinear GGA'''
-    # v_rho = (vxc_a + vxc_b) * .5
-    # v_mz  = (vxc_a - vxc_b) * .5
-    # For small components, M = |\beta\Sigma| leads to
-    # (v_rho - sigma_z*v_mz) =
-    #     [[vxc_b, 0    ]
-    #      [0    , vxc_a]]
-    wvb, wva = _dks_gga_wv0(rho, vxc, weight)
-    aoa, aob = ao
-    mat  = _dot_ao_ao(mol, aoa[0], _scale_ao(aoa[:4], wva[:4]), non0tab, shls_slice, ao_loc)
-    mat += _dot_ao_ao(mol, aob[0], _scale_ao(aob[:4], wvb[:4]), non0tab, shls_slice, ao_loc)
-    return mat
-
-def _col_mgga_vxc_mat(mol, ao, weight, rho, vxc, non0tab, shls_slice, ao_loc):
+def _col_mgga_vxc_mat(mol, ao, weight, rho, vxc, non0tab, shls_slice, ao_loc,
+                      on_LL_block=True):
     '''Vxc matrix of collinear MGGA'''
-    wva, wvb = _dks_gga_wv0(rho, vxc, weight)
+    if on_LL_block:
+        wva, wvb = _dks_gga_wv0(rho, vxc, weight)
+    else:
+        wvb, wva = _dks_gga_wv0(rho, vxc, weight)
     aoa, aob = ao
     mat  = _dot_ao_ao(mol, aoa[0], _scale_ao(aoa[:4], wva[:4]), non0tab, shls_slice, ao_loc)
     mat += _dot_ao_ao(mol, aob[0], _scale_ao(aob[:4], wvb[:4]), non0tab, shls_slice, ao_loc)
 
     vtau = vxc[3]
-    wva, wvb = .25 * weight * vtau.T
-    mat += _dot_ao_ao(mol, aoa[1], _scale_ao(aoa[1], wva), non0tab, shls_slice, ao_loc)
-    mat += _dot_ao_ao(mol, aoa[2], _scale_ao(aoa[2], wva), non0tab, shls_slice, ao_loc)
-    mat += _dot_ao_ao(mol, aoa[3], _scale_ao(aoa[3], wva), non0tab, shls_slice, ao_loc)
-    mat += _dot_ao_ao(mol, aob[1], _scale_ao(aob[1], wvb), non0tab, shls_slice, ao_loc)
-    mat += _dot_ao_ao(mol, aob[2], _scale_ao(aob[2], wvb), non0tab, shls_slice, ao_loc)
-    mat += _dot_ao_ao(mol, aob[3], _scale_ao(aob[3], wvb), non0tab, shls_slice, ao_loc)
-    return mat
-
-def _col_mgga_vxc_matSS(mol, ao, weight, rho, vxc, non0tab, shls_slice, ao_loc):
-    '''Vxc matrix of collinear MGGA'''
-    wvb, wva = _dks_gga_wv0(rho, vxc, weight)
-    aoa, aob = ao
-    mat  = _dot_ao_ao(mol, aoa[0], _scale_ao(aoa[:4], wva[:4]), non0tab, shls_slice, ao_loc)
-    mat += _dot_ao_ao(mol, aob[0], _scale_ao(aob[:4], wvb[:4]), non0tab, shls_slice, ao_loc)
-
-    vtau = vxc[3]
-    wvb, wva = .25 * weight * vtau.T
+    if on_LL_block:
+        wva, wvb = .25 * weight * vtau.T
+    else:
+        wvb, wva = .25 * weight * vtau.T
     mat += _dot_ao_ao(mol, aoa[1], _scale_ao(aoa[1], wva), non0tab, shls_slice, ao_loc)
     mat += _dot_ao_ao(mol, aoa[2], _scale_ao(aoa[2], wva), non0tab, shls_slice, ao_loc)
     mat += _dot_ao_ao(mol, aoa[3], _scale_ao(aoa[3], wva), non0tab, shls_slice, ao_loc)
@@ -325,14 +268,14 @@ def r_vxc(ni, mol, grids, xc_code, dms, spin=0, relativity=1, hermi=1,
 
     if xctype in ('LDA', 'GGA', 'MGGA'):
         f_eval_mat = {
-            ('LDA' , True ): (_col_lda_vxc_mat  , _col_lda_vxc_matSS  , 0),
-            ('GGA' , True ): (_col_gga_vxc_mat  , _col_gga_vxc_matSS  , 1),
-            ('MGGA', True ): (_col_mgga_vxc_mat , _col_mgga_vxc_matSS , 2),
-            ('LDA' , False): (_ncol_lda_vxc_mat , _ncol_lda_vxc_matSS , 0),
-            ('GGA' , False): (_ncol_gga_vxc_mat , _ncol_gga_vxc_matSS , 1),
-            ('MGGA', False): (_ncol_mgga_vxc_mat, _ncol_mgga_vxc_matSS, 2)
+            ('LDA' , True ): (_col_lda_vxc_mat  , 0),
+            ('GGA' , True ): (_col_gga_vxc_mat  , 1),
+            ('MGGA', True ): (_col_mgga_vxc_mat , 2),
+            ('LDA' , False): (_ncol_lda_vxc_mat , 0),
+            ('GGA' , False): (_ncol_gga_vxc_mat , 1),
+            ('MGGA', False): (_ncol_mgga_vxc_mat, 2)
         }
-        fLL, fSS, ao_deriv = f_eval_mat[(xctype, ni.collinear)]
+        fmat, ao_deriv = f_eval_mat[(xctype, ni.collinear)]
 
         for ao, mask, weight, coords \
                 in ni.block_loop(mol, grids, nao, ao_deriv, with_s, max_memory):
@@ -345,11 +288,11 @@ def r_vxc(ni, mol, grids, xc_code, dms, spin=0, relativity=1, hermi=1,
                 nelec[idm] += den.sum()
                 excsum[idm] += (den*exc).sum()
 
-                matLL[idm] += fLL(mol, ao[:2], weight, rho, vxc,
-                                  mask, shls_slice, ao_loc)
+                matLL[idm] += fmat(mol, ao[:2], weight, rho, vxc,
+                                   mask, shls_slice, ao_loc, True)
                 if with_s:
-                    matSS[idm] += fSS(mol, ao[2:], weight, rho, vxc,
-                                      mask, shls_slice, ao_loc)
+                    matSS[idm] += fmat(mol, ao[2:], weight, rho, vxc,
+                                       mask, shls_slice, ao_loc, False)
 
         matLL = matLL + matLL.conj().transpose(0,2,1)
         if with_s:
@@ -372,6 +315,16 @@ def r_vxc(ni, mol, grids, xc_code, dms, spin=0, relativity=1, hermi=1,
         excsum = excsum[0]
     return nelec, excsum, vmat.reshape(dms.shape)
 
+def _dks_lda_wv1(rho0, rho1, vxc, fxc, weight):
+    u_u, u_d, d_d = fxc[0].T
+    rho1, (m1x, m1y, m1z) = rho1
+    rho1a = (rho1 + m1z) * .5
+    rho1b = (rho1 - m1z) * .5
+    # * .5 because v+v.T is applied in the caller
+    wva = (u_u * rho1a + u_d * rho1b) * weight * .5
+    wvb = (u_d * rho1a + d_d * rho1b) * weight * .5
+    return wva, wvb
+
 def _dks_gga_wv1(rho0, rho1, vxc, fxc, weight):
     r0, (m0x, m0y, m0z) = rho0
     r1, (m1x, m1y, m1z) = rho1
@@ -379,38 +332,61 @@ def _dks_gga_wv1(rho0, rho1, vxc, fxc, weight):
     rho1 = ((r1 + m1z) * .5, (r1 - m1z) * .5)
     return numint._uks_gga_wv1(rho0, rho1, vxc, fxc, weight)
 
-def _dks_lda_wv1(rho0, rho1, vxc, fxc, weight):
-    u_u, u_d, d_d = fxc[0].T
-    rho1, (m1x, m1y, m1z) = rho1
-    rho1a = (rho1 + m1z) * .5
-    rho1b = (rho1 - m1z) * .5
-    wva = (u_u * rho1a + u_d * rho1b) * weight
-    wvb = (u_d * rho1a + d_d * rho1b) * weight
-    return wva, wvb
+def _dks_mgga_wv1(rho0, rho1, vxc, fxc, weight):
+    r0, (m0x, m0y, m0z) = rho0
+    r1, (m1x, m1y, m1z) = rho1
+    rho0 = ((r0 + m0z) * .5, (r0 - m0z) * .5)
+    rho1 = ((r1 + m1z) * .5, (r1 - m1z) * .5)
+    return numint._uks_mgga_wv1(rho0, rho1, vxc, fxc, weight)
 
-def _col_lda_fxc_mat(mol, ao, wv, non0tab, shls_slice, ao_loc):
+def _col_lda_fxc_mat(mol, ao, weight, rho0, rho1, vxc, fxc,
+                     non0tab, shls_slice, ao_loc, on_LL_block=True):
     '''Kernel matrix of collinear LDA'''
-    wva, wvb = wv
+    if on_LL_block:
+        wva, wvb = _dks_lda_wv1(rho0, rho1, vxc, fxc, weight)
+    else:
+        wvb, wva = _dks_lda_wv1(rho0, rho1, vxc, fxc, weight)
     aoa, aob = ao
-    aow = numpy.einsum('pi,p->pi', aoa, wva)
-    mat = _dot_ao_ao(mol, aow, aoa, non0tab, shls_slice, ao_loc)
-    aow = numpy.einsum('pi,p->pi', aob, wvb)
-    mat += _dot_ao_ao(mol, aow, aob, non0tab, shls_slice, ao_loc)
+    mat  = _dot_ao_ao(mol, _scale_ao(aoa, wva), aoa, non0tab, shls_slice, ao_loc)
+    mat += _dot_ao_ao(mol, _scale_ao(aob, wvb), aob, non0tab, shls_slice, ao_loc)
     return mat
 
-def _col_gga_fxc_mat(mol, ao, wv, non0tab, shls_slice, ao_loc):
+def _col_gga_fxc_mat(mol, ao, weight, rho0, rho1, vxc, fxc,
+                     non0tab, shls_slice, ao_loc, on_LL_block=True):
     '''Kernel matrix of collinear GGA'''
-    wva, wvb = wv
+    if on_LL_block:
+        wva, wvb = _dks_gga_wv1(rho0, rho1, vxc, fxc, weight)
+    else:
+        wvb, wva = _dks_gga_wv1(rho0, rho1, vxc, fxc, weight)
     aoa, aob = ao
-    aow = numpy.einsum('npi,np->pi', aoa, wva)
+    aow = None
+    aow = _scale_ao(aoa[:4], wva[:4], aow)
     mat = _dot_ao_ao(mol, aow, aoa[0], non0tab, shls_slice, ao_loc)
-    aow = numpy.einsum('npi,np->pi', aob, wvb)
+    aow = _scale_ao(aob[:4], wvb[:4], aow)
     mat += _dot_ao_ao(mol, aow, aob[0], non0tab, shls_slice, ao_loc)
     return mat
 
-def _col_mgga_fxc_mat(mol, ao, weight, rho, vxc, non0tab, shls_slice, ao_loc):
+def _col_mgga_fxc_mat(mol, ao, weight, rho0, rho1, vxc, fxc,
+                      non0tab, shls_slice, ao_loc, on_LL_block=True):
     '''Kernel matrix of collinear MGGA'''
-    raise NotImplementedError
+    if on_LL_block:
+        wva, wvb = _dks_mgga_wv1(rho0, rho1, vxc, fxc, weight)
+    else:
+        wvb, wva = _dks_mgga_wv1(rho0, rho1, vxc, fxc, weight)
+    aoa, aob = ao
+    aow = None
+    aow = _scale_ao(aoa[:4], wva[:4], aow)
+    mat = _dot_ao_ao(mol, aow, aoa[0], non0tab, shls_slice, ao_loc)
+    aow = _scale_ao(aob[:4], wvb[:4], aow)
+    mat += _dot_ao_ao(mol, aow, aob[0], non0tab, shls_slice, ao_loc)
+
+    mat += _dot_ao_ao(mol, ao[1], _scale_ao(ao[1], wva[5], aow), non0tab, shls_slice, ao_loc)
+    mat += _dot_ao_ao(mol, ao[2], _scale_ao(ao[2], wva[5], aow), non0tab, shls_slice, ao_loc)
+    mat += _dot_ao_ao(mol, ao[3], _scale_ao(ao[3], wva[5], aow), non0tab, shls_slice, ao_loc)
+    mat += _dot_ao_ao(mol, ao[1], _scale_ao(ao[1], wvb[5], aow), non0tab, shls_slice, ao_loc)
+    mat += _dot_ao_ao(mol, ao[2], _scale_ao(ao[2], wvb[5], aow), non0tab, shls_slice, ao_loc)
+    mat += _dot_ao_ao(mol, ao[3], _scale_ao(ao[3], wvb[5], aow), non0tab, shls_slice, ao_loc)
+    return mat
 
 def r_fxc(ni, mol, grids, xc_code, dm0, dms, relativity=1, hermi=0,
           rho0=None, vxc=None, fxc=None, max_memory=2000, verbose=None):
@@ -423,7 +399,7 @@ def r_fxc(ni, mol, grids, xc_code, dm0, dms, relativity=1, hermi=0,
     if not ni.collinear:
         raise NotImplementedError('non-collinear fxc')
 
-    make_rho, nset, nao = ni._gen_rho_evaluator(mol, dms, hermi)
+    make_rho1, nset, nao = ni._gen_rho_evaluator(mol, dms, hermi)
     with_s = (nao == n2c*2)  # 4C DM
 
     if rho0 is None and (xctype != 'LDA' or fxc is None):
@@ -436,70 +412,52 @@ def r_fxc(ni, mol, grids, xc_code, dm0, dms, relativity=1, hermi=0,
 
     matLL = numpy.zeros((nset,n2c,n2c), dtype=dms.dtype)
     matSS = numpy.zeros_like(matLL)
-    aow = None
-    if xctype == 'LDA':
-        ao_deriv = 0
-        ip = 0
-        for ao, mask, weight, coords \
-                in ni.block_loop(mol, grids, nao, ao_deriv, max_memory):
-            ngrid = weight.size
-            aow = numpy.ndarray(ao.shape, order='F', buffer=aow)
-            if fxc is None:
-                _rho0 = make_rho0(0, ao, mask, xctype)
-                fxc0 = ni.eval_xc(xc_code, _rho0, spin=1,
-                                  relativity=relativity, deriv=2,
-                                  verbose=verbose)[2]
-            else:
-                fxc0 = (fxc[0][ip:ip+ngrid], None, None, None)
-                ip += ngrid
+    if xctype in ('LDA', 'GGA', 'MGGA'):
+        f_eval_mat = {
+            'LDA' : (_col_lda_fxc_mat  , 0),
+            'GGA' : (_col_gga_fxc_mat  , 1),
+            'MGGA': (_col_mgga_fxc_mat , 2),
+        }
+        fmat, ao_deriv = f_eval_mat[xctype]
 
-            for i in range(nset):
-                rho1 = make_rho(i, ao, mask, xctype)
-                wv = _dks_lda_wv1(_rho0, rho1, vxc, fxc0, weight)
-                matLL[i] += _col_lda_fxc_mat(mol, ao[:2], wv, mask,
-                                             shls_slice, ao_loc)
-                if with_s:
-                    matSS[i] += _col_lda_fxc_mat(mol, ao[2:], wv, mask,
-                                                 shls_slice, ao_loc)
-    elif xctype == 'GGA':
-        ao_deriv = 1
-        ip = 0
+        _rho0 = None
+        p1 = 0
         for ao, mask, weight, coords \
                 in ni.block_loop(mol, grids, nao, ao_deriv, max_memory):
-            ngrid = weight.size
-            if rho0 is None:
+            p0, p1 = p1, p1 + weight.size
+            if rho0 is not None:
+                if xctype == 'LDA':
+                    _rho0 = [numpy.asarray(rho0[0][p0:p1], order='C'),
+                             numpy.asarray(rho0[1][:,p0:p1], order='C')]
+                else:
+                    _rho0 = [numpy.asarray(rho0[0][:,p0:p1], order='C'),
+                             numpy.asarray(rho0[1][:,:,p0:p1], order='C')]
+            elif make_rho0 is not None:
                 _rho0 = make_rho0(0, ao, mask, xctype)
-            else:
-                _rho0 = (rho0[0][:,ip:ip+ngrid], rho0[1][:,:,ip:ip+ngrid])
+
             if vxc is None or fxc is None:
-                vxc0, fxc0 = ni.eval_xc(xc_code, _rho0, spin=1,
+                _vxc, _fxc = ni.eval_xc(xc_code, _rho0, spin=1,
                                         relativity=relativity, deriv=2,
                                         verbose=verbose)[1:3]
             else:
-                vxc0 = (None, vxc[1][ip:ip+ngrid])
-                fxc0 = (fxc[0][ip:ip+ngrid], fxc[1][ip:ip+ngrid], fxc[2][ip:ip+ngrid])
-                ip += ngrid
+                _vxc = [None if x is None else x[p0:p1] for x in vxc]
+                _fxc = [None if x is None else x[p0:p1] for x in fxc]
 
             for i in range(nset):
-                rho1 = make_rho(i, ao, mask, xctype)
-                wv = _dks_gga_wv1(_rho0, rho1, vxc0, fxc0, weight)
-                matLL[i] += _col_gga_fxc_mat(mol, ao[:2], wv, mask,
-                                             shls_slice, ao_loc)
+                rho1 = make_rho1(i, ao, mask, xctype)
+                matLL[i] += fmat(mol, ao[:2], weight, _rho0, rho1, _vxc, _fxc,
+                                 mask, shls_slice, ao_loc)
                 if with_s:
-                    matSS[i] += _col_gga_fxc_mat(mol, ao[2:], wv, mask,
-                                                 shls_slice, ao_loc)
+                    matSS[i] += fmat(mol, ao[2:], weight, _rho0, rho1, _vxc, _fxc,
+                                     mask, shls_slice, ao_loc, False)
 
         # for (\nabla\mu) \nu + \mu (\nabla\nu)
         matLL = matLL + matLL.conj().transpose(0,2,1)
         if with_s:
             matSS = matSS + matSS.conj().transpose(0,2,1)
 
-    elif xctype == 'NLC':
-        raise NotImplementedError('NLC')
-
-    elif xctype == 'MGGA':
-        raise NotImplementedError('meta-GGA')
-
+    elif xctype == 'HF':
+        pass
     else:
         raise NotImplementedError(f'r_fxc for functional {xc_code}')
 
@@ -521,22 +479,26 @@ def cache_xc_kernel(ni, mol, grids, xc_code, mo_coeff, mo_occ, spin=1,
     DFT hessian module etc.
     '''
     xctype = ni._xc_type(xc_code)
-    ao_deriv = 0
-    if xctype == 'GGA':
+    if xctype == 'MGGA':
+        ao_deriv = 2
+    elif xctype == 'GGA':
         ao_deriv = 1
     elif xctype == 'NLC':
         raise NotImplementedError('NLC')
-    elif xctype == 'MGGA':
-        raise NotImplementedError('meta-GGA')
+    else:
+        ao_deriv = 0
 
     dm = numpy.dot(mo_coeff * mo_occ, mo_coeff.conj().T)
     hermi = 1
     make_rho, nset, nao = ni._gen_rho_evaluator(mol, dm, hermi)
     rho = []
+    m = []
     for ao, mask, weight, coords \
             in ni.block_loop(mol, grids, nao, ao_deriv, max_memory):
-        rho.append(make_rho(0, ao, mask, xctype))
-    rho = numpy.hstack(rho)
+        rho_m = make_rho(0, ao, mask, xctype)
+        rho.append(rho_m[0])
+        m.append(rho_m[1])
+    rho = (numpy.hstack(rho), numpy.hstack(m))
     vxc, fxc = ni.eval_xc(xc_code, rho, spin=spin, relativity=1, deriv=2,
                           verbose=0)[1:3]
     return rho, vxc, fxc
@@ -555,14 +517,15 @@ def get_rho(ni, mol, dm, grids, max_memory=2000):
 
 
 class RNumInt(numint._NumIntMixin):
+    '''NumInt for j-adapted (spinor) basis'''
     def __init__(self):
         self.omega = None  # RSH paramter
         self.collinear = False
 
     get_rho = get_rho
     cache_xc_kernel = cache_xc_kernel
-    r_vxc = r_vxc
-    r_fxc = r_fxc
+    get_vxc = r_vxc = r_vxc
+    get_fxc = r_fxc = r_fxc
 
     def eval_ao(self, mol, coords, deriv=0, with_s=True, shls_slice=None,
                 non0tab=None, out=None, verbose=None):

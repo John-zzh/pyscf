@@ -22,7 +22,7 @@ from pyscf.dft import dks
 class KnownValues(unittest.TestCase):
     def test_dks_lda(self):
         mol = gto.Mole()
-        mol.atom = [['O',(0.,0.,0.)]]
+        mol.atom = 'O'
         mol.basis = 'uncsto3g'
         mol.verbose = 7
         mol.output = '/dev/null'
@@ -30,7 +30,7 @@ class KnownValues(unittest.TestCase):
         mf = dks.UDKS(mol)
         mf.xc = 'lda,vwn'
         eks4 = mf.kernel()
-        self.assertAlmostEqual(eks4, -73.70943600268252, 9)
+        self.assertAlmostEqual(eks4, -73.7094356147537, 9)
         mol.stdout.close()
 
     def test_x2c_uks_lda(self):
@@ -56,13 +56,13 @@ class KnownValues(unittest.TestCase):
         mf = dks.UDKS(mol)
         mf.xc = 'lda + .2*HF'
         eks4 = mf.kernel()
-        self.assertAlmostEqual(eks4, -126.51704683045618, 9)
+        self.assertAlmostEqual(eks4, -128.47760358113405, 9)
 
         mf = dks.UDKS(mol)
         mf.xc = 'lda + .2*HF'
         mf.omega = .5
         eks4 = mf.kernel()
-        self.assertAlmostEqual(eks4, -126.41264813604408, 9)
+        self.assertAlmostEqual(eks4, -127.9514067989949, 9)
         mol.stdout.close()
 
     def test_collinear_dks_lda(self):

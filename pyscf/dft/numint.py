@@ -2585,6 +2585,7 @@ class NumInt(_NumIntMixin):
         else:
             return self.nr_uks(mol, grids, xc_code, dms, relativity, hermi,
                                max_memory, verbose)
+    get_vxc = nr_vxc
 
     @lib.with_doc(nr_fxc.__doc__)
     def nr_fxc(self, mol, grids, xc_code, dm0, dms, spin=0, relativity=0, hermi=0,
@@ -2595,6 +2596,7 @@ class NumInt(_NumIntMixin):
         else:
             return self.nr_uks_fxc(mol, grids, xc_code, dm0, dms, relativity,
                                    hermi, rho0, vxc, fxc, max_memory, verbose)
+    get_fxc = nr_fxc
 
     @lib.with_doc(nr_sap_vxc.__doc__)
     def nr_sap(self, mol, grids, max_memory=2000, verbose=None):

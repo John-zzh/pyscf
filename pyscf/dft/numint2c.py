@@ -39,8 +39,8 @@ class NumInt2C(numint._NumIntMixin):
         '''
         nao = ao.shape[-1]
         assert dm.ndim == 2 and nao * 2 == dm.shape[0]
-        dm_a = dm[:nao,:nao].real
-        dm_b = dm[nao:,nao:].real
+        dm_a = dm[:nao,:nao].real.copy()
+        dm_b = dm[nao:,nao:].real.copy()
         rho = numint.eval_rho(mol, ao, dm_a, non0tab, xctype, hermi, verbose)
         rho += numint.eval_rho(mol, ao, dm_b, non0tab, xctype, hermi, verbose)
         if dm.dtype == np.complex128:
@@ -77,20 +77,19 @@ class NumInt2C(numint._NumIntMixin):
         DFT hessian module etc.
         '''
         xctype = self._xc_type(xc_code)
-    if xctype == 'MGGA':
-        ao_deriv = 2
-        raise NotImplementedError('NLC')
-    elif xctype == 'GGA':
-        ao_deriv = 1
-    elif xctype == 'NLC':
-        raise NotImplementedError('NLC')
-    else:
-        ao_deriv = 0
+        if xctype == 'MGGA':
+            ao_deriv = 2
+        elif xctype == 'GGA':
+            ao_deriv = 1
+        elif xctype == 'NLC':
+            raise NotImplementedError('NLC')
+        else:
+            ao_deriv = 0
 
         nao = mo_coeff.shape[0] // 2
         dm = np.dot(mo_coeff * mo_occ, mo_coeff.conj().T)
-        dm_a = dm[:nao,:nao].real
-        dm_b = dm[nao:,nao:].real
+        dm_a = dm[:nao,:nao].real.copy()
+        dm_b = dm[nao:,nao:].real.copy()
         rhoa = []
         rhob = []
         for ao, mask, weight, coords \
@@ -103,12 +102,21 @@ class NumInt2C(numint._NumIntMixin):
                                 verbose=0)[1:3]
         return rho, vxc, fxc
 
-    def nr_vxc(self, mol, grids, xc_code, dms, spin=0, relativity=0, hermi=0,
+    def get_rho(self, mol, dm, grids, max_memory=2000):
+        '''Density in real space
+        '''
+        nao = dm.shape[-1] // 2
+        dm_a = dm[:nao,:nao].real
+        dm_b = dm[nao:,nao:].real
+        ni = self.view(numint.NumInt)
+        return numint.get_rho(ni, mol, dm_a+dm_b, grids, max_memory)
+
+    def nr_vxc(self, mol, grids, xc_code, dms, spin=0, relativity=0, hermi=1,
                max_memory=2000, verbose=None):
         dms = np.asarray(dms)
         nao = dms.shape[-1] // 2
-        dm_a = dms[...,:nao,:nao].real
-        dm_b = dms[...,nao:,nao:].real
+        dm_a = dms[...,:nao,:nao].real.copy()
+        dm_b = dms[...,nao:,nao:].real.copy()
         ni = self.view(numint.NumInt)
         n, exc, vxc = numint.nr_uks(ni, mol, grids, xc_code, (dm_a, dm_b),
                                     max_memory=max_memory)
@@ -117,13 +125,14 @@ class NumInt2C(numint._NumIntMixin):
         vmat[...,nao:,nao:] = vxc[1]
         return n, exc, vmat
     nr_gks_vxc = nr_vxc
+    get_vxc = nr_vxc
 
     def nr_fxc(self, mol, grids, xc_code, dm0, dms, spin=0, relativity=0, hermi=0,
                rho0=None, vxc=None, fxc=None, max_memory=2000, verbose=None):
         dms = np.asarray(dms)
         nao = dms.shape[-1] // 2
-        dms_a = dms[...,:nao,:nao].real
-        dms_b = dms[...,nao:,nao:].real
+        dms_a = dms[...,:nao,:nao].real.copy()
+        dms_b = dms[...,nao:,nao:].real.copy()
         ni = self.view(numint.NumInt)
         vmat = numint.nr_uks_fxc(
             ni, mol, grids, xc_code, dm0, (dms_a, dms_b), relativity=0, hermi=0,
@@ -133,3 +142,4 @@ class NumInt2C(numint._NumIntMixin):
         fxcmat[...,nao:,nao:] = vmat[1]
         return fxcmat
     nr_gks_fxc = nr_fxc
+    get_fxc = nr_fxc
