@@ -21,9 +21,9 @@ from pyscf.x2c import x2c
 from pyscf.dft import dks
 
 class UKS(dks.KohnShamDFT, x2c.UHF):
-    def __init__(self, mol):
+    def __init__(self, mol, xc='LDA,VWN'):
         x2c.UHF.__init__(self, mol)
-        dks.KohnShamDFT.__init__(self)
+        dks.KohnShamDFT.__init__(self, xc)
 
     def dump_flags(self, verbose=None):
         x2c.UHF.dump_flags(self, verbose)
@@ -33,9 +33,9 @@ class UKS(dks.KohnShamDFT, x2c.UHF):
 X2C_UKS = UKS
 
 class RKS(dks.KohnShamDFT, x2c.RHF):
-    def __init__(self, mol):
+    def __init__(self, mol, xc='LDA,VWN'):
         x2c.RHF.__init__(self, mol)
-        dks.KohnShamDFT.__init__(self)
+        dks.KohnShamDFT.__init__(self, xc)
 
     def dump_flags(self, verbose=None):
         x2c.RHF.dump_flags(self, verbose)

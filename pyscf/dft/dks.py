@@ -61,7 +61,7 @@ def energy_elec(ks, dm=None, h1e=None, vhf=None):
 
 
 class KohnShamDFT(rks.KohnShamDFT):
-    def __init__(self, mol, xc='LDA,VWN'):
+    def __init__(self, xc='LDA,VWN'):
         rks.KohnShamDFT.__init__(self, xc)
         self._numint = r_numint.RNumInt()
 
