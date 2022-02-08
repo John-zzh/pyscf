@@ -30,6 +30,17 @@ class UKS(dks.KohnShamDFT, x2c.UHF):
         dks.KohnShamDFT.dump_flags(self, verbose)
         return self
 
+    def to_hf(self):
+        '''Convert the input mean-field object to an X2C-HF object.
+
+        Note this conversion only changes the class of the mean-field object.
+        The total energy and wave-function are the same as them in the input
+        mean-field object.
+        '''
+        mf = self.view(x2c.UHF)
+        mf.converged = False
+        return mf
+
 X2C_UKS = UKS
 
 class RKS(dks.KohnShamDFT, x2c.RHF):
@@ -41,5 +52,16 @@ class RKS(dks.KohnShamDFT, x2c.RHF):
         x2c.RHF.dump_flags(self, verbose)
         dks.KohnShamDFT.dump_flags(self, verbose)
         return self
+
+    def to_hf(self):
+        '''Convert the input mean-field object to an X2C-HF object.
+
+        Note this conversion only changes the class of the mean-field object.
+        The total energy and wave-function are the same as them in the input
+        mean-field object.
+        '''
+        mf = self.view(x2c.RHF)
+        mf.converged = False
+        return mf
 
 X2C_RKS = RKS
