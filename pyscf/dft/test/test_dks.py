@@ -42,46 +42,46 @@ class KnownValues(unittest.TestCase):
             mf = dks.UDKS(mol)
             mf.xc = 'lda,vwn'
             eks4 = mf.kernel()
-        self.assertAlmostEqual(eks4, -80.3600775975093, 9)
+        self.assertAlmostEqual(eks4, -80.3600775975093, 8)
 
     def test_x2c_uks_lda(self):
         mf = dks.UDKS(mol).x2c()
         mf.xc = 'lda,'
         eks4 = mf.kernel()
-        self.assertAlmostEqual(eks4, -73.9972147814834, 9)
+        self.assertAlmostEqual(eks4, -73.9972147814834, 8)
 
     def test_dks_lda_omega(self):
         mf = dks.UDKS(mol)
         mf.xc = 'lda + .2*HF'
         eks4 = mf.kernel()
-        self.assertAlmostEqual(eks4, -75.71593214601225, 9)
+        self.assertAlmostEqual(eks4, -75.71593214601225, 8)
 
         mf = dks.UDKS(mol)
         mf.xc = 'lda + .2*HF'
         mf.omega = .5
         eks4 = mf.kernel()
-        self.assertAlmostEqual(eks4, -75.26598450889301, 9)
+        self.assertAlmostEqual(eks4, -75.26598450889301, 8)
 
     def test_collinear_dks_lda(self):
         mf = dks.UDKS(mol)
         mf.xc = 'lda,vwn'
         mf.collinear = True
         eks4 = mf.kernel()
-        self.assertAlmostEqual(eks4, -74.60528573582566, 9)
+        self.assertAlmostEqual(eks4, -74.60528573582566, 8)
 
     def test_collinear_dks_gga(self):
         mf = dks.UDKS(mol)
         mf.xc = 'pbe'
         mf.collinear = True
         eks4 = mf.kernel()
-        self.assertAlmostEqual(eks4, -75.07046613221685, 9)
+        self.assertAlmostEqual(eks4, -75.07046613221685, 8)
 
     def test_collinear_x2c_uks_gga(self):
         mf = dks.UDKS(mol).x2c()
         mf.xc = 'pbe'
         mf.collinear = True
         eks4 = mf.kernel()
-        self.assertAlmostEqual(eks4, -75.06735429926894, 9)
+        self.assertAlmostEqual(eks4, -75.06735429926894, 8)
 
 
 if __name__ == "__main__":

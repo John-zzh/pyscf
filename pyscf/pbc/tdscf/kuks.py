@@ -26,7 +26,7 @@ RPA = KTDDFT = TDDFT = kuhf.TDHF
 
 dft.kuks.KUKS.TDA   = lib.class_as_method(KTDA)
 dft.kuks.KUKS.TDHF  = None
-dft.krks.KRKS.TDDFT = lib.class_as_method(TDDFT)
+dft.kuks.KUKS.TDDFT = lib.class_as_method(TDDFT)
 
 
 if __name__ == '__main__':
