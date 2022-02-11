@@ -65,21 +65,21 @@ class KnownValues(unittest.TestCase):
     def test_collinear_dks_lda(self):
         mf = dks.UDKS(mol)
         mf.xc = 'lda,vwn'
-        mf.collinear = True
+        mf.collinear = 'col'
         eks4 = mf.kernel()
         self.assertAlmostEqual(eks4, -74.60528573582566, 8)
 
     def test_collinear_dks_gga(self):
         mf = dks.UDKS(mol)
         mf.xc = 'pbe'
-        mf.collinear = True
+        mf.collinear = 'col'
         eks4 = mf.kernel()
         self.assertAlmostEqual(eks4, -75.07046613221685, 8)
 
     def test_collinear_x2c_uks_gga(self):
         mf = dks.UDKS(mol).x2c()
         mf.xc = 'pbe'
-        mf.collinear = True
+        mf.collinear = 'col'
         eks4 = mf.kernel()
         self.assertAlmostEqual(eks4, -75.06735429926894, 8)
 

@@ -1554,7 +1554,7 @@ def nr_uks_fxc(ni, mol, grids, xc_code, dm0, dms, relativity=0, hermi=0,
     xctype = ni._xc_type(xc_code)
 
     dma, dmb = _format_uks_dm(dms)
-    nao = dms.shape[-1]
+    nao = dma.shape[-1]
     make_rhoa, nset = ni._gen_rho_evaluator(mol, dma, hermi)[:2]
     make_rhob       = ni._gen_rho_evaluator(mol, dmb, hermi)[0]
 

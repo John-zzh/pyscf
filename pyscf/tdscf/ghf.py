@@ -335,7 +335,7 @@ class TDA(TDMixin):
 
         mo_energy = mf.mo_energy
         mo_occ = mf.mo_occ
-        occidx = numpy.where(mo_occ==2)[0]
+        occidx = numpy.where(mo_occ==1)[0]
         viridx = numpy.where(mo_occ==0)[0]
         e_ia = mo_energy[viridx] - mo_energy[occidx,None]
         e_ia_max = e_ia.max()

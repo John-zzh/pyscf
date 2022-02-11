@@ -78,7 +78,7 @@ def _gen_rhf_response(mf, mo_coeff=None, mo_occ=None,
                 if hermi == 2:
                     v1 = numpy.zeros_like(dm1)
                 else:
-                    v1 = ni.nr_rks_fxc(mol, mf.grids, mf.xc, dm0, dm1, 0, hermi,
+                    v1 = ni.nr_rks_fxc(mol, mf.grids, mf.xc, dm0, dm1, 0, 0, hermi,
                                        rho0, vxc, fxc, max_memory=max_memory)
                 if hybrid:
                     if hermi != 2:
@@ -250,7 +250,7 @@ def _gen_ghf_response(mf, mo_coeff=None, mo_occ=None,
             if hermi == 2:
                 v1 = numpy.zeros_like(dm1)
             else:
-                v1 = ni.get_fxc(mol, mf.grids, mf.xc, dm0, dm1, 0, hermi,
+                v1 = ni.get_fxc(mol, mf.grids, mf.xc, dm0, dm1, 0, 0, hermi,
                                 rho0, vxc, fxc, max_memory=max_memory)
             if not hybrid:
                 if with_j:

@@ -366,14 +366,16 @@ def r_vxc(ni, mol, grids, xc_code, dms, spin=0, relativity=1, hermi=1,
 
         if ni.collinear[0] == 'm':  # mcol
             fn_eval_xc = ni.mcfun_eval_xc_wrapper(xc_code)
+            nproc = lib.num_threads()
 
         for ao, mask, weight, coords \
                 in ni.block_loop(mol, grids, nao, ao_deriv, with_s, max_memory):
             for i in range(nset):
                 rho = make_rho(i, ao, mask, xctype)
                 if ni.collinear[0] == 'm':
-                    exc, vxc = mcfun.eval_xc_eff(fn_eval_xc, rho, deriv=1, xctype=xctype,
-                                                 ang_samples=ni.ang_samples)[:2]
+                    exc, vxc = mcfun.eval_xc_eff(fn_eval_xc, rho, deriv=1,
+                                                 spin_samples=ni.spin_samples,
+                                                 max_workers=nproc)[:2]
                 else:
                     exc, vxc = ni.eval_xc(xc_code, rho, spin=1,
                                           relativity=relativity, deriv=1,
@@ -536,6 +538,7 @@ def r_fxc(ni, mol, grids, xc_code, dm0, dms, relativity=1, hermi=0,
         fmat, ao_deriv = f_eval_mat[(xctype, ni.collinear[0])]
         if ni.collinear[0] == 'm':  # mcol
             fn_eval_xc = ni.mcfun_eval_xc_wrapper(xc_code)
+            nproc = lib.num_threads()
 
         _rho0 = None
         _vxc = None
@@ -553,15 +556,16 @@ def r_fxc(ni, mol, grids, xc_code, dm0, dms, relativity=1, hermi=0,
 
             if fxc is None:
                 if ni.collinear[0] == 'm':  # mcol
-                    _vxc, _fxc = mcfun.eval_xc_eff(fn_eval_xc, _rho0, 2, xctype,
-                                                   ang_samples=ni.ang_samples)[1:3]
+                    _vxc, _fxc = mcfun.eval_xc_eff(fn_eval_xc, _rho0, deriv=2,
+                                                   spin_samples=ni.spin_samples,
+                                                   max_workers=nproc)[1:3]
                 else:
                     _vxc, _fxc = ni.eval_xc(xc_code, _rho0, spin=1,
                                             relativity=relativity, deriv=2,
                                             verbose=verbose)[1:3]
             else:
                 if ni.collinear[0] == 'm':
-                    _fxc = [None if x is None else x[:,:,:,:,p0:p1] for x in fxc]
+                    _fxc = fxc[:,:,:,:,p0:p1]
                 else:
                     _vxc = [None if x is None else x[p0:p1] for x in vxc]
                     _fxc = [None if x is None else x[p0:p1] for x in fxc]
@@ -622,8 +626,10 @@ def cache_xc_kernel(ni, mol, grids, xc_code, mo_coeff, mo_occ, spin=1,
 
     if ni.collinear[0] == 'm':  # mcol
         fn_eval_xc = ni.mcfun_eval_xc_wrapper(xc_code)
-        vxc, fxc = mcfun.eval_xc_eff(fn_eval_xc, rho, deriv=2, xctype=xctype,
-                                     ang_samples=ni.ang_samples)[1:3]
+        nproc = lib.num_threads()
+        vxc, fxc = mcfun.eval_xc_eff(fn_eval_xc, rho, deriv=2,
+                                     spin_samples=ni.spin_samples,
+                                     max_workers=nproc)[1:3]
     else:
         vxc, fxc = ni.eval_xc(xc_code, rho, spin=spin, relativity=1, deriv=2,
                               verbose=0)[1:3]
@@ -650,11 +656,12 @@ class RNumInt(numint._NumIntMixin):
     #   'ncol' (non-collinear)
     #   'mcol' (multi-collinear)
     collinear = getattr(__config__, 'dft_numint_RnumInt_collinear', 'col')
-    ang_samples = getattr(__config__, 'dft_numint_RnumInt_ang_samples', 5810)
+    spin_samples = getattr(__config__, 'dft_numint_RnumInt_spin_samples', 14)
 
     def __init__(self):
         self.omega = None  # RSH paramter
 
+    eval_xc = numint2c.eval_xc_col
     mcfun_eval_xc_wrapper = numint2c.mcfun_eval_xc_wrapper
     get_rho = get_rho
     cache_xc_kernel = cache_xc_kernel
@@ -726,38 +733,5 @@ class RNumInt(numint._NumIntMixin):
             def make_rho(idm, ao, non0tab, xctype):
                 return self.eval_rho(mol, ao, dms[idm], non0tab, xctype)
         return make_rho, ndms, nao
-
-    def eval_xc(self, xc_code, rho, spin=1, relativity=0, deriv=1, omega=None,
-                verbose=None):
-        if omega is None: omega = self.omega
-        if self.collinear[0] == 'c':  # collinear
-            r, mx, my, mz = rho
-            rhou = (r + mz) * .5
-            rhod = (r - mz) * .5
-            rho = (rhou, rhod)
-            xc = self.libxc.eval_xc(xc_code, rho, 1, relativity, deriv,
-                                    omega, verbose)
-        elif self.collinear[0] == 'n':  # ncol
-            # only support LDA
-            # JTCC, 2, 257
-            r = rho[0]
-            m = rho[1:4]
-            s = lib.norm(m, axis=0)
-            rhou = (r + s) * .5
-            rhod = (r - s) * .5
-            rho = (rhou, rhod)
-            xc = self.libxc.eval_xc(xc_code, rho, 1, relativity, deriv,
-                                    omega, verbose)
-            exc, vxc = xc[:2]
-            # update vxc[0] inplace
-            vrho = vxc[0]
-            vr, vm = (vrho[:,0]+vrho[:,1])*.5, (vrho[:,0]-vrho[:,1])*.5
-            vrho[:,0] = vr
-            vrho[:,1] = vm
-        elif self.collinear[0] == 'm':  # mcol
-            raise RuntimeError('should not be called for mcol')
-        else:
-            raise RuntimeError(f'Unknown collinear scheme {self.collinear}')
-        return xc
 
 _RNumInt = RNumInt
