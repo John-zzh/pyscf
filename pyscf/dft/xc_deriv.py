@@ -20,6 +20,7 @@ Transform XC functional derivatives between different representations
 '''
 
 import numpy as np
+from pyscf import lib
 
 
 def transform_vxc(rho, vxc, xctype, spin=0):
@@ -370,9 +371,23 @@ def _stack_fgg(fgg, axis=0):
     if fgg.shape[axis] != 6:
         fgg = fgg.reshape(fgg.shape[:axis] + (6, -1) + fgg.shape[axis+1:])
     slices = [slice(None)] * fgg.ndim
-    slices[axis] = [[0, 1, 2], [1, 3, 4], [2, 4, 5]]
+    #:slices[axis] = [[0, 1, 2], [1, 3, 4], [2, 4, 5]]
+    #:_stack_fg(_stack_fg(fgg[tuple(slices)], axis=axis+1), axis=axis)
+    slices[axis] = np.array([0, 1, 1, 2,
+                             1, 3, 3, 4,
+                             1, 3, 3, 4,
+                             2, 4, 4, 5])
     qgg = fgg[tuple(slices)]
-    return _stack_fg(_stack_fg(qgg, axis=axis+1), axis=axis)
+    wslices = [None] * fgg.ndim
+    wslices[axis] = slice(None)
+    weights = np.array([4, 2, 2, 4,
+                        2, 1, 1, 2,
+                        2, 1, 1, 2,
+                        4, 2, 2, 4])
+    qgg[:] *= weights[tuple(wslices)]
+    new_shape = fgg.shape[:axis] + (2,2, 2,2) + fgg.shape[axis+1:]
+    qgg = qgg.reshape(new_shape)
+    return qgg
 
 def _stack_frrr(frrr, axis=0):
     '''
@@ -397,8 +412,8 @@ def _stack_fggg(fggg, axis=0):
     slices[axis] = [[[0, 1, 2], [1, 3, 4], [2, 4, 5]],
                     [[1, 3, 4], [3, 6, 7], [4, 7, 8]],
                     [[2, 4, 5], [4, 7, 8], [5, 8, 9]]]
-    qggg = fggg[tuple(slices)]
-    return _stack_fg(_stack_fg(_stack_fg(qggg, axis=axis+2), axis=axis+1), axis=axis)
+    fggg = fggg[tuple(slices)]
+    return _stack_fg(_stack_fg(_stack_fg(fggg, axis=axis+2), axis=axis+1), axis=axis)
 
 def compress(vp, spin=0):
     if spin != 0:  # spin polarized
@@ -461,12 +476,16 @@ def ud2ts(v_ud):
     if v_ud.ndim == 3:  # vxc
         v_ts = np.einsum('ra,axg->rxg', c, v_ud)
     elif v_ud.ndim == 5:  # fxc
-        v_ts = np.einsum('ra,axbyg->rxbyg', c, v_ud)
-        v_ts = np.einsum('sb,rxbyg->rxsyg', c, v_ts)
+        #:v_ts = np.einsum('ra,axbyg->rxbyg', c, v_ud)
+        #:v_ts = np.einsum('sb,rxbyg->rxsyg', c, v_ts)
+        c2 = np.einsum('ra,sb->rsab', c, c)
+        v_ts = lib.einsum('rsab,axbyg->rxsyg', c2, v_ud)
     elif v_ud.ndim == 7:  # kxc
-        v_ts = np.einsum('ra,axbyczg->rxbyczg', c, v_ud)
-        v_ts = np.einsum('sb,rxbyczg->rxsyczg', c, v_ts)
-        v_ts = np.einsum('tc,rxsyczg->rxsytzg', c, v_ts)
+        #:v_ts = np.einsum('ra,axbyczg->rxbyczg', c, v_ud)
+        #:v_ts = np.einsum('sb,rxbyczg->rxsyczg', c, v_ts)
+        #:v_ts = np.einsum('tc,rxsyczg->rxsytzg', c, v_ts)
+        c3 = np.einsum('ra,sb,tc->rstabc', c, c, c)
+        v_ts = lib.einsum('rstabc,axbyczg->rxsytzg', c3, v_ud)
     else:
         raise NotImplementedError(f'Shape {v_ud.shape} not supported')
     return v_ts

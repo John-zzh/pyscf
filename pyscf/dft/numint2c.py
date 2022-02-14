@@ -215,39 +215,6 @@ def mcfun_eval_xc_wrapper(ni, xc_code):
     xctype = ni._xc_type(xc_code)
     return functools.partial(_mcfun_eval_xc, ni, xc_code, xctype=xctype)
 
-def eval_xc_col(ni, xc_code, rho, spin=1, relativity=0, deriv=1, omega=None,
-                verbose=None):
-    '''eval_xc for density in rho/m representation. Support LDA only'''
-    if omega is None: omega = ni.omega
-    if ni.collinear[0] == 'c':  # collinear
-        r, mx, my, mz = rho
-        rhou = (r + mz) * .5
-        rhod = (r - mz) * .5
-        rho = (rhou, rhod)
-        xc = ni.libxc.eval_xc(xc_code, rho, 1, relativity, deriv, omega, verbose)
-    elif ni.collinear[0] == 'n':  # ncol
-        # only support LDA
-        # JTCC, 2, 257
-        r = rho[0]
-        m = rho[1:4]
-        s = lib.norm(m, axis=0)
-        rhou = (r + s) * .5
-        rhod = (r - s) * .5
-        rho = (rhou, rhod)
-        xc = ni.libxc.eval_xc(xc_code, rho, 1, relativity, deriv,
-                                omega, verbose)
-        exc, vxc = xc[:2]
-        # update vxc[0] inplace
-        vrho = vxc[0]
-        vr, vm = (vrho[:,0]+vrho[:,1])*.5, (vrho[:,0]-vrho[:,1])*.5
-        vrho[:,0] = vr
-        vrho[:,1] = vm
-    elif ni.collinear[0] == 'm':  # mcol
-        raise RuntimeError('should not be called for mcol')
-    else:
-        raise RuntimeError(f'Unknown collinear scheme {ni.collinear}')
-    return xc
-
 def _mcol_lda_vxc_mat(mol, ao, weight, rho, vxc, mask, shls_slice, ao_loc):
     '''Vxc matrix of multi-collinear LDA'''
     # * .5 because of v+v.conj().T in r_vxc
@@ -556,5 +523,33 @@ class NumInt2C(numint._NumIntMixin):
         return fxcmat
     get_fxc = nr_gks_fxc = nr_fxc
 
+    def eval_xc(ni, xc_code, rho, spin=1, relativity=0, deriv=1, omega=None,
+                verbose=None):
+        '''eval_xc for density in rho/m representation. Support LDA only'''
+        if omega is None: omega = ni.omega
+        if ni.collinear[0] == 'c':  # collinear
+            xc = ni.libxc.eval_xc(xc_code, rho, 1, relativity, deriv, omega, verbose)
+        elif ni.collinear[0] == 'n':  # ncol
+            # only support LDA
+            # JTCC, 2, 257
+            r = rho[0]
+            m = rho[1:4]
+            s = lib.norm(m, axis=0)
+            rhou = (r + s) * .5
+            rhod = (r - s) * .5
+            rho = (rhou, rhod)
+            xc = ni.libxc.eval_xc(xc_code, rho, 1, relativity, deriv,
+                                    omega, verbose)
+            exc, vxc = xc[:2]
+            # update vxc[0] inplace
+            vrho = vxc[0]
+            vr, vm = (vrho[:,0]+vrho[:,1])*.5, (vrho[:,0]-vrho[:,1])*.5
+            vrho[:,0] = vr
+            vrho[:,1] = vm
+        elif ni.collinear[0] == 'm':  # mcol
+            raise RuntimeError('should not be called for mcol')
+        else:
+            raise RuntimeError(f'Unknown collinear scheme {ni.collinear}')
+        return xc
+
     mcfun_eval_xc_wrapper = mcfun_eval_xc_wrapper
-    eval_xc = eval_xc_col

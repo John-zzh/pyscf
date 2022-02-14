@@ -661,7 +661,6 @@ class RNumInt(numint._NumIntMixin):
     def __init__(self):
         self.omega = None  # RSH paramter
 
-    eval_xc = numint2c.eval_xc_col
     mcfun_eval_xc_wrapper = numint2c.mcfun_eval_xc_wrapper
     get_rho = get_rho
     cache_xc_kernel = cache_xc_kernel
@@ -733,5 +732,38 @@ class RNumInt(numint._NumIntMixin):
             def make_rho(idm, ao, non0tab, xctype):
                 return self.eval_rho(mol, ao, dms[idm], non0tab, xctype)
         return make_rho, ndms, nao
+
+    def eval_xc(self, xc_code, rho, spin=1, relativity=0, deriv=1, omega=None,
+                verbose=None):
+        '''eval_xc for density in rho/m representation. Support LDA only'''
+        if omega is None: omega = self.omega
+        if self.collinear[0] == 'c':  # collinear
+            r, mx, my, mz = rho
+            rhou = (r + mz) * .5
+            rhod = (r - mz) * .5
+            rho = (rhou, rhod)
+            xc = self.libxc.eval_xc(xc_code, rho, 1, relativity, deriv, omega, verbose)
+        elif self.collinear[0] == 'n':  # ncol
+            # only support LDA
+            # JTCC, 2, 257
+            r = rho[0]
+            m = rho[1:4]
+            s = lib.norm(m, axis=0)
+            rhou = (r + s) * .5
+            rhod = (r - s) * .5
+            rho = (rhou, rhod)
+            xc = self.libxc.eval_xc(xc_code, rho, 1, relativity, deriv,
+                                    omega, verbose)
+            exc, vxc = xc[:2]
+            # update vxc[0] inplace
+            vrho = vxc[0]
+            vr, vm = (vrho[:,0]+vrho[:,1])*.5, (vrho[:,0]-vrho[:,1])*.5
+            vrho[:,0] = vr
+            vrho[:,1] = vm
+        elif self.collinear[0] == 'm':  # mcol
+            raise RuntimeError('should not be called for mcol')
+        else:
+            raise RuntimeError(f'Unknown collinear scheme {self.collinear}')
+        return xc
 
 _RNumInt = RNumInt

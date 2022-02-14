@@ -83,9 +83,9 @@ def _eval_xc_lebedev(fn_eval_xc, rho_tm, deriv, spin_samples):
 
         if deriv > 1:
             kxc = kxc.reshape(2,nvar,2,nvar,2,nvar,ngrids,nsg)
-            # FIXME
-            fxc[1] *= 2
+            fxc[1,:,1] *= 3
             fxc[:,:,1] *= 2
+            fxc[1,:,:] *= 2
             fxc += np.einsum('xbyczgo,xgo->byczgo', kxc[1], s)
             fxc = np.einsum('rao,axbygo->rxbygo', c_tm, fxc)
             fxc_eff += np.einsum('sbo,rxbygo->rxsyg', cw_tm, fxc)
@@ -184,8 +184,9 @@ def _eval_xc_paxis(fn_eval_xc, rho_tm, deriv, spin_samples):
 
         if deriv > 1:
             kxc = kxc.reshape(2,nvar,2,nvar,2,nvar,ngrids,nsg)
-            fxc[1] *= 2
+            fxc[1,:,1] *= 3
             fxc[:,:,1] *= 2
+            fxc[1,:,:] *= 2
             fxc += np.einsum('xbyczgo,xgo->byczgo', kxc[1], s)
             fxc_eff += _affine_transform(fxc, omega, p_sgridz, weights)
 
