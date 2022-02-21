@@ -83,7 +83,38 @@ class KnownValues(unittest.TestCase):
         eks4 = mf.kernel()
         self.assertAlmostEqual(eks4, -75.06735429926894, 8)
 
+    def test_mcol_dks_lda(self):
+        mf = dks.UDKS(mol)
+        mf.xc = 'lda,vwn'
+        mf.collinear = 'mcol'
+        mf._numint.spin_samples = 6
+        eks4 = mf.kernel()
+        self.assertAlmostEqual(eks4, -74.5979086544545, 8)
+
+    def test_mcol_dks_gga(self):
+        mf = dks.UDKS(mol)
+        mf.xc = 'pbe'
+        mf.collinear = 'mcol'
+        mf._numint.spin_samples = 6
+        eks4 = mf.kernel()
+        self.assertAlmostEqual(eks4, -75.07336288558855, 8)
+
+    def test_mcol_dks_gga(self):
+        mf = dks.UDKS(mol)
+        mf.xc = 'm06l'
+        mf.collinear = 'mcol'
+        mf._numint.spin_samples = 6
+        eks4 = mf.kernel()
+        self.assertAlmostEqual(eks4, -75.07046613221685, 8)
+
 
 if __name__ == "__main__":
     print("Test DKS")
-    unittest.main()
+    #unittest.main()
+    if 1:
+        mf = dks.UDKS(mol)
+        mf.xc = 'm06l'
+        mf.collinear = 'mcol'
+        mf._numint.spin_samples = 6
+        eks4 = mf.kernel()
+        print(eks4, -75.07046613221685, 8)

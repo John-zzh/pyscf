@@ -180,6 +180,7 @@ def get_ab(mf, mo_energy=None, mo_coeff=None, mo_occ=None):
         b_ab += numpy.einsum('iajb->iajb', eri_ab[:nocc_a,nocc_a:,:nocc_b,nocc_b:])
 
     if _response_functions._is_dft_object(mf):
+        from pyscf.dft import xc_deriv
         ni = mf._numint
         ni.libxc.test_deriv_order(mf.xc, 2, raise_error=True)
         if getattr(mf, 'nlc', '') != '':
@@ -200,8 +201,8 @@ def get_ab(mf, mo_energy=None, mo_coeff=None, mo_occ=None):
             ao_deriv = 0
             for ao, mask, weight, coords \
                     in ni.block_loop(mol, mf.grids, nao, ao_deriv, max_memory):
-                rho0a = make_rho(0, ao, mask, 'LDA')
-                rho0b = make_rho(1, ao, mask, 'LDA')
+                rho0a = make_rho(0, ao, mask, xctype)
+                rho0b = make_rho(1, ao, mask, xctype)
                 fxc = ni.eval_xc(mf.xc, (rho0a,rho0b), 1, deriv=2)[2]
                 u_u, u_d, d_d = fxc[0].T
 
@@ -231,14 +232,12 @@ def get_ab(mf, mo_energy=None, mo_coeff=None, mo_occ=None):
             ao_deriv = 1
             for ao, mask, weight, coords \
                     in ni.block_loop(mol, mf.grids, nao, ao_deriv, max_memory):
-                rho0a = make_rho(0, ao, mask, 'GGA')
-                rho0b = make_rho(1, ao, mask, 'GGA')
-                vxc, fxc = ni.eval_xc(mf.xc, (rho0a,rho0b), 1, deriv=2)[1:3]
-                uu, ud, dd = vxc[1].T
-                u_u, u_d, d_d = fxc[0].T
-                u_uu, u_ud, u_dd, d_uu, d_ud, d_dd = fxc[1].T
-                uu_uu, uu_ud, uu_dd, ud_ud, ud_dd, dd_dd = fxc[2].T
-
+                rho0a = make_rho(0, ao, mask, xctype)
+                rho0b = make_rho(1, ao, mask, xctype)
+                rho = (rho0a, rho0b)
+                vxc, fxc = ni.eval_xc(mf.xc, rho, 1, deriv=2)[1:3]
+                fxc = xc_deriv.transform_fxc(rho, vxc, fxc, xctype, spin=1)
+                wfxc = fxc * weight
                 rho_o_a = lib.einsum('xrp,pi->xri', ao, orbo_a)
                 rho_v_a = lib.einsum('xrp,pi->xri', ao, orbv_a)
                 rho_o_b = lib.einsum('xrp,pi->xri', ao, orbo_b)
@@ -247,72 +246,65 @@ def get_ab(mf, mo_energy=None, mo_coeff=None, mo_occ=None):
                 rho_ov_b = numpy.einsum('xri,ra->xria', rho_o_b, rho_v_b[0])
                 rho_ov_a[1:4] += numpy.einsum('ri,xra->xria', rho_o_a[0], rho_v_a[1:4])
                 rho_ov_b[1:4] += numpy.einsum('ri,xra->xria', rho_o_b[0], rho_v_b[1:4])
-                # sigma1 ~ \nabla(\rho_\alpha+\rho_\beta) dot \nabla(|b><j|) z_{bj}
-                a0a1 = numpy.einsum('xr,xria->ria', rho0a[1:4], rho_ov_a[1:4])
-                a0b1 = numpy.einsum('xr,xria->ria', rho0a[1:4], rho_ov_b[1:4])
-                b0a1 = numpy.einsum('xr,xria->ria', rho0b[1:4], rho_ov_a[1:4])
-                b0b1 = numpy.einsum('xr,xria->ria', rho0b[1:4], rho_ov_b[1:4])
+                w_ov_aa = numpy.einsum('xyr,xria->yria', wfxc[0,:,0], rho_ov_a)
+                w_ov_ab = numpy.einsum('xyr,xria->yria', wfxc[0,:,1], rho_ov_a)
+                w_ov_bb = numpy.einsum('xyr,xria->yria', wfxc[1,:,1], rho_ov_b)
 
-                w_ov = numpy.empty_like(rho_ov_a)
-                w_ov[0]  = numpy.einsum('r,ria->ria', u_u, rho_ov_a[0])
-                w_ov[0] += numpy.einsum('r,ria->ria', 2*u_uu, a0a1)
-                w_ov[0] += numpy.einsum('r,ria->ria',   u_ud, b0a1)
-                f_ov_a = numpy.einsum('r,ria->ria', 4*uu_uu, a0a1)
-                f_ov_b = numpy.einsum('r,ria->ria', 2*uu_ud, a0a1)
-                f_ov_a+= numpy.einsum('r,ria->ria', 2*uu_ud, b0a1)
-                f_ov_b+= numpy.einsum('r,ria->ria',   ud_ud, b0a1)
-                f_ov_a+= numpy.einsum('r,ria->ria', 2*u_uu, rho_ov_a[0])
-                f_ov_b+= numpy.einsum('r,ria->ria',   u_ud, rho_ov_a[0])
-                w_ov[1:] = numpy.einsum('ria,xr->xria', f_ov_a, rho0a[1:4])
-                w_ov[1:]+= numpy.einsum('ria,xr->xria', f_ov_b, rho0b[1:4])
-                w_ov[1:]+= numpy.einsum('r,xria->xria', 2*uu, rho_ov_a[1:4])
-                w_ov *= weight[:,None,None]
-                iajb = lib.einsum('xria,xrjb->iajb', rho_ov_a, w_ov)
+                iajb = lib.einsum('xria,xrjb->iajb', w_ov_aa, rho_ov_a)
                 a_aa += iajb
                 b_aa += iajb
 
-                w_ov = numpy.empty_like(rho_ov_b)
-                w_ov[0]  = numpy.einsum('r,ria->ria', d_d, rho_ov_b[0])
-                w_ov[0] += numpy.einsum('r,ria->ria', 2*d_dd, b0b1)
-                w_ov[0] += numpy.einsum('r,ria->ria',   d_ud, a0b1)
-                f_ov_b = numpy.einsum('r,ria->ria', 4*dd_dd, b0b1)
-                f_ov_a = numpy.einsum('r,ria->ria', 2*ud_dd, b0b1)
-                f_ov_b+= numpy.einsum('r,ria->ria', 2*ud_dd, a0b1)
-                f_ov_a+= numpy.einsum('r,ria->ria',   ud_ud, a0b1)
-                f_ov_b+= numpy.einsum('r,ria->ria', 2*d_dd, rho_ov_b[0])
-                f_ov_a+= numpy.einsum('r,ria->ria',   d_ud, rho_ov_b[0])
-                w_ov[1:] = numpy.einsum('ria,xr->xria', f_ov_a, rho0a[1:4])
-                w_ov[1:]+= numpy.einsum('ria,xr->xria', f_ov_b, rho0b[1:4])
-                w_ov[1:]+= numpy.einsum('r,xria->xria', 2*dd, rho_ov_b[1:4])
-                w_ov *= weight[:,None,None]
-                iajb = lib.einsum('xria,xrjb->iajb', rho_ov_b, w_ov)
+                iajb = lib.einsum('xria,xrjb->iajb', w_ov_bb, rho_ov_b)
                 a_bb += iajb
                 b_bb += iajb
 
-                w_ov = numpy.empty_like(rho_ov_b)
-                w_ov[0]  = numpy.einsum('r,ria->ria', u_d, rho_ov_b[0])
-                w_ov[0] += numpy.einsum('r,ria->ria', 2*u_dd, b0b1)
-                w_ov[0] += numpy.einsum('r,ria->ria',   u_ud, a0b1)
-                f_ov_a = numpy.einsum('r,ria->ria', 4*uu_dd, b0b1)
-                f_ov_b = numpy.einsum('r,ria->ria', 2*ud_dd, b0b1)
-                f_ov_a+= numpy.einsum('r,ria->ria', 2*uu_ud, a0b1)
-                f_ov_b+= numpy.einsum('r,ria->ria',   ud_ud, a0b1)
-                f_ov_a+= numpy.einsum('r,ria->ria', 2*d_uu, rho_ov_b[0])
-                f_ov_b+= numpy.einsum('r,ria->ria',   d_ud, rho_ov_b[0])
-                w_ov[1:] = numpy.einsum('ria,xr->xria', f_ov_a, rho0a[1:4])
-                w_ov[1:]+= numpy.einsum('ria,xr->xria', f_ov_b, rho0b[1:4])
-                w_ov[1:]+= numpy.einsum('r,xria->xria', ud, rho_ov_b[1:4])
-                w_ov *= weight[:,None,None]
-                iajb = lib.einsum('xria,xrjb->iajb', rho_ov_a, w_ov)
+                iajb = lib.einsum('xria,xrjb->iajb', w_ov_ab, rho_ov_b)
                 a_ab += iajb
                 b_ab += iajb
 
         elif xctype == 'HF':
             pass
+
         elif xctype == 'NLC':
             raise NotImplementedError('NLC')
+
         elif xctype == 'MGGA':
-            raise NotImplementedError('meta-GGA')
+            ao_deriv = 1
+            for ao, mask, weight, coords \
+                    in ni.block_loop(mol, mf.grids, nao, ao_deriv, max_memory):
+                rho0a = make_rho(0, ao, mask, xctype)
+                rho0b = make_rho(1, ao, mask, xctype)
+                rho = (rho0a, rho0b)
+                vxc, fxc = ni.eval_xc(mf.xc, rho, 1, deriv=2)[1:3]
+                fxc = xc_deriv.transform_fxc(rho, vxc, fxc, xctype, spin=1)
+                wfxc = fxc * weight
+                rho_oa = lib.einsum('xrp,pi->xri', ao, orbo_a)
+                rho_ob = lib.einsum('xrp,pi->xri', ao, orbo_b)
+                rho_va = lib.einsum('xrp,pi->xri', ao, orbv_a)
+                rho_vb = lib.einsum('xrp,pi->xri', ao, orbv_b)
+                rho_ov_a = numpy.einsum('xri,ra->xria', rho_oa, rho_va[0])
+                rho_ov_b = numpy.einsum('xri,ra->xria', rho_ob, rho_vb[0])
+                rho_ov_a[1:4] += numpy.einsum('ri,xra->xria', rho_oa[0], rho_va[1:4])
+                rho_ov_b[1:4] += numpy.einsum('ri,xra->xria', rho_ob[0], rho_vb[1:4])
+                tau_ov_a = numpy.einsum('xri,xra->ria', rho_oa[1:4], rho_va[1:4]) * .5
+                tau_ov_b = numpy.einsum('xri,xra->ria', rho_ob[1:4], rho_vb[1:4]) * .5
+                rho_ov_a = numpy.vstack([rho_ov_a, tau_ov_a[numpy.newaxis]])
+                rho_ov_b = numpy.vstack([rho_ov_b, tau_ov_b[numpy.newaxis]])
+                w_ov_aa = numpy.einsum('xyr,xria->yria', wfxc[0,:,0], rho_ov_a)
+                w_ov_ab = numpy.einsum('xyr,xria->yria', wfxc[0,:,1], rho_ov_a)
+                w_ov_bb = numpy.einsum('xyr,xria->yria', wfxc[1,:,1], rho_ov_b)
+
+                iajb = lib.einsum('xria,xrjb->iajb', w_ov_aa, rho_ov_a)
+                a_aa += iajb
+                b_aa += iajb
+
+                iajb = lib.einsum('xria,xrjb->iajb', w_ov_bb, rho_ov_b)
+                a_bb += iajb
+                b_bb += iajb
+
+                iajb = lib.einsum('xria,xrjb->iajb', w_ov_ab, rho_ov_b)
+                a_ab += iajb
+                b_ab += iajb
 
     else:
         add_hf_(a, b)

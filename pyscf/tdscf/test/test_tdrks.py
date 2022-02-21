@@ -1,5 +1,5 @@
 #!/usr/bin/env python
-# Copyright 2014-2020 The PySCF Developers. All Rights Reserved.
+# Copyright 2014-2022 The PySCF Developers. All Rights Reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -62,26 +62,28 @@ mf_b3lyp1.grids.prune = None
 mf_b3lyp1._numint.libxc = dft.xcfun
 mf_b3lyp1.scf()
 
+mf_m06l = dft.RKS(mol).run(xc='m06l')
+
 #mf_b3pw91g = dft.RKS(mol)
 #mf_b3pw91g.xc = 'b3pw91g'
 #mf_b3pw91g.grids.prune = None
 #mf_b3pw91g.scf()
 
 def tearDownModule():
-    global mol, mf, td_hf, mf_lda3, mf_lda, mf_bp86, mf_b3lyp, mf_b3lyp1#, mf_b3pw91g
+    global mol, mf, td_hf, mf_lda3, mf_lda, mf_bp86, mf_b3lyp, mf_b3lyp1, mf_m06l
     mol.stdout.close()
-    del mol, mf, td_hf, mf_lda3, mf_lda, mf_bp86, mf_b3lyp, mf_b3lyp1#, mf_b3pw91g
+    del mol, mf, td_hf, mf_lda3, mf_lda, mf_bp86, mf_b3lyp, mf_b3lyp1, mf_m06l
 
 class KnownValues(unittest.TestCase):
     def test_nohbrid_lda(self):
-        td = rks.TDDFTNoHybrid(mf_lda3)
+        td = rks.CasidaTDDFT(mf_lda3)
         es = td.kernel(nstates=5)[0] * 27.2114
         self.assertAlmostEqual(lib.fp(es), -41.059050077236151, 6)
         ref = [9.74227238,  9.74227238, 14.85153818, 30.35019348, 30.35019348]
         self.assertAlmostEqual(abs(es - ref).max(), 0, 6)
 
     def test_nohbrid_b88p86(self):
-        td = rks.TDDFTNoHybrid(mf_bp86)
+        td = rks.CasidaTDDFT(mf_bp86)
         es = td.kernel(nstates=5)[0] * 27.2114
         self.assertAlmostEqual(lib.fp(es), -40.462005239920558, 6)
 
@@ -172,11 +174,7 @@ class KnownValues(unittest.TestCase):
         self.assertAlmostEqual(abs(es - ref).max(), 0, 5)
 
     def test_tda_m06l_singlet(self):
-        mf = dft.RKS(mol)
-        mf.xc = 'm06l'
-        mf.grids.prune = None
-        mf.scf()
-        td = mf.TDA()
+        td = mf_m06l.TDA()
         es = td.kernel(nstates=5)[0] * 27.2114
         self.assertAlmostEqual(lib.fp(es), -42.506737955524784, 6)
         ref = [10.82697357, 10.82697357, 16.73026277]
@@ -193,7 +191,7 @@ class KnownValues(unittest.TestCase):
         numpy.random.seed(2)
         x, y = xy = numpy.random.random((2,nocc,nvir))
         ax = numpy.einsum('iajb,jb->ia', a, x)
-        self.assertAlmostEqual(abs(ax - ftda([x]).reshape(nocc,nvir)).max(), 0, 6)
+        self.assertAlmostEqual(abs(ax - ftda([x]).reshape(nocc,nvir)).max(), 0, 9)
 
         ab1 = ax + numpy.einsum('iajb,jb->ia', b, y)
         ab2 =-numpy.einsum('iajb,jb->ia', b, x)
@@ -223,6 +221,25 @@ class KnownValues(unittest.TestCase):
 
     def test_ab_b3lyp(self):
         mf = mf_b3lyp
+        a, b = rks.TDDFT(mf).get_ab()
+        ftda = rhf.gen_tda_operation(mf, singlet=None)[0]
+        ftdhf = rhf.gen_tdhf_operation(mf, singlet=True)[0]
+        nocc = numpy.count_nonzero(mf.mo_occ == 2)
+        nvir = numpy.count_nonzero(mf.mo_occ == 0)
+        numpy.random.seed(2)
+        x, y = xy = numpy.random.random((2,nocc,nvir))
+        ax = numpy.einsum('iajb,jb->ia', a, x)
+        self.assertAlmostEqual(abs(ax - ftda([x]).reshape(nocc,nvir)).max(), 0, 9)
+
+        ab1 = ax + numpy.einsum('iajb,jb->ia', b, y)
+        ab2 =-numpy.einsum('iajb,jb->ia', b, x)
+        ab2-= numpy.einsum('iajb,jb->ia', a, y)
+        abxy_ref = ftdhf([xy]).reshape(2,nocc,nvir)
+        self.assertAlmostEqual(abs(ab1 - abxy_ref[0]).max(), 0, 9)
+        self.assertAlmostEqual(abs(ab2 - abxy_ref[1]).max(), 0, 9)
+
+    def test_ab_mgga(self):
+        mf = mf_m06l
         a, b = rks.TDDFT(mf).get_ab()
         ftda = rhf.gen_tda_operation(mf, singlet=None)[0]
         ftdhf = rhf.gen_tdhf_operation(mf, singlet=True)[0]
@@ -355,7 +372,7 @@ class KnownValues(unittest.TestCase):
         pmol.build()
 
         mf = dft.RKS(pmol).run()
-        td = rks.TDDFTNoHybrid(mf)
+        td = rks.CasidaTDDFT(mf)
         td.wfnsym = 'A2'
         td.nroots = 3
         es = td.kernel()[0]

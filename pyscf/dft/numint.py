@@ -107,7 +107,8 @@ def eval_ao(mol, coords, deriv=0, shls_slice=None,
     return mol.eval_gto(feval, coords, comp, shls_slice, non0tab, out=out)
 
 #TODO: \nabla^2 rho and tau = 1/2 (\nabla f)^2
-def eval_rho(mol, ao, dm, non0tab=None, xctype='LDA', hermi=0, verbose=None):
+def eval_rho(mol, ao, dm, non0tab=None, xctype='LDA', hermi=0, with_lapl=True,
+             verbose=None):
     r'''Calculate the electron density for LDA functional, and the density
     derivatives for GGA functional.
 
@@ -115,10 +116,10 @@ def eval_rho(mol, ao, dm, non0tab=None, xctype='LDA', hermi=0, verbose=None):
         mol : an instance of :class:`Mole`
 
         ao : 2D array of shape (N,nao) for LDA, 3D array of shape (4,N,nao) for GGA
-            or (5,N,nao) for meta-GGA.  N is the number of grids, nao is the
-            number of AO functions.  If xctype is GGA, ao[0] is AO value
-            and ao[1:3] are the AO gradients.  If xctype is meta-GGA, ao[4:10]
-            are second derivatives of ao values.
+            or meta-GGA.  N is the number of grids, nao is the
+            number of AO functions.  If xctype is GGA (MGGA), ao[0] is AO value
+            and ao[1:3] are the AO gradients. ao[4:10] are second derivatives of
+            ao values if applicable.
         dm : 2D array
             Density matrix
 
@@ -136,8 +137,9 @@ def eval_rho(mol, ao, dm, non0tab=None, xctype='LDA', hermi=0, verbose=None):
     Returns:
         1D array of size N to store electron density if xctype = LDA;  2D array
         of (4,N) to store density and "density derivatives" for x,y,z components
-        if xctype = GGA;  (6,N) array for meta-GGA, where last two rows are
-        \nabla^2 rho and tau = 1/2(\nabla f)^2
+        if xctype = GGA; For meta-GGA, returns can be a (6,N) (with_lapl=True)
+        array where last two rows are \nabla^2 rho and tau = 1/2(\nabla f)^2
+        or (5,N) (with_lapl=False) where the last row is tau = 1/2(\nabla f)^2 
 
     Examples:
 
@@ -180,31 +182,42 @@ def eval_rho(mol, ao, dm, non0tab=None, xctype='LDA', hermi=0, verbose=None):
             #c1 = _dot_ao_dm(mol, ao[i], dm, non0tab, shls_slice, ao_loc)
             #rho[i] += numpy.einsum('pi,pi->p', c1, ao[0])
     else: # meta-GGA
-        # rho[4] = \nabla^2 rho, rho[5] = 1/2 |nabla f|^2
-        rho = numpy.empty((6,ngrids))
+        if with_lapl:
+            # rho[4] = \nabla^2 rho, rho[5] = 1/2 |nabla f|^2
+            rho = numpy.empty((6,ngrids))
+            tau_idx = 5
+        else:
+            rho = numpy.empty((5,ngrids))
+            tau_idx = 4
         c0 = _dot_ao_dm(mol, ao[0], dm, non0tab, shls_slice, ao_loc)
         #:rho[0] = numpy.einsum('pi,pi->p', ao[0], c0)
         rho[0] = _contract_rho(ao[0], c0)
-        rho[5] = 0
+
+        rho[tau_idx] = 0
         for i in range(1, 4):
             #:rho[i] = numpy.einsum('pi,pi->p', c0, ao[i]) * 2 # *2 for +c.c.
             rho[i] = _contract_rho(ao[i], c0) * 2
             c1 = _dot_ao_dm(mol, ao[i], dm.T, non0tab, shls_slice, ao_loc)
-            #:rho[5] += numpy.einsum('pi,pi->p', c1, ao[i])
-            rho[5] += _contract_rho(ao[i], c1)
-        XX, YY, ZZ = 4, 7, 9
-        ao2 = ao[XX] + ao[YY] + ao[ZZ]
-        # \nabla^2 rho
-        #:rho[4] = numpy.einsum('pi,pi->p', c0, ao2)
-        rho[4] = _contract_rho(ao2, c0)
-        rho[4] += rho[5]
-        rho[4] *= 2
+            #:rho[tau_idx] += numpy.einsum('pi,pi->p', c1, ao[i])
+            rho[tau_idx] += _contract_rho(ao[i], c1)
+
+        if with_lapl:
+            if ao.shape[0] > 4:
+                XX, YY, ZZ = 4, 7, 9
+                ao2 = ao[XX] + ao[YY] + ao[ZZ]
+                # \nabla^2 rho
+                #:rho[4] = numpy.einsum('pi,pi->p', c0, ao2)
+                rho[4] = _contract_rho(ao2, c0)
+                rho[4] += rho[5]
+                rho[4] *= 2
+            else:
+                rho[4] = 0
         # tau = 1/2 (\nabla f)^2
-        rho[5] *= .5
+        rho[tau_idx] *= .5
     return rho
 
 def eval_rho2(mol, ao, mo_coeff, mo_occ, non0tab=None, xctype='LDA',
-              verbose=None):
+              with_lapl=True, verbose=None):
     r'''Calculate the electron density for LDA functional, and the density
     derivatives for GGA functional.  This function has the same functionality
     as :func:`eval_rho` except that the density are evaluated based on orbital
@@ -215,10 +228,10 @@ def eval_rho2(mol, ao, mo_coeff, mo_occ, non0tab=None, xctype='LDA',
         mol : an instance of :class:`Mole`
 
         ao : 2D array of shape (N,nao) for LDA, 3D array of shape (4,N,nao) for GGA
-            or (5,N,nao) for meta-GGA.  N is the number of grids, nao is the
-            number of AO functions.  If xctype is GGA, ao[0] is AO value
-            and ao[1:3] are the AO gradients.  If xctype is meta-GGA, ao[4:10]
-            are second derivatives of ao values.
+            or meta-GGA.  N is the number of grids, nao is the
+            number of AO functions.  If xctype is GGA (MGGA), ao[0] is AO value
+            and ao[1:3] are the AO gradients. ao[4:10] are second derivatives of
+            ao values if applicable.
         dm : 2D array
             Density matrix
 
@@ -228,14 +241,17 @@ def eval_rho2(mol, ao, mo_coeff, mo_occ, non0tab=None, xctype='LDA',
             array can be obtained by calling :func:`make_mask`
         xctype : str
             LDA/GGA/mGGA.  It affects the shape of the return density.
+        with_lapl: bool
+            Wether to compute laplacian. It affects the shape of returns.
         verbose : int or object of :class:`Logger`
             No effects.
 
     Returns:
         1D array of size N to store electron density if xctype = LDA;  2D array
         of (4,N) to store density and "density derivatives" for x,y,z components
-        if xctype = GGA;  (6,N) array for meta-GGA, where last two rows are
-        \nabla^2 rho and tau = 1/2(\nabla f)^2
+        if xctype = GGA; For meta-GGA, returns can be a (6,N) (with_lapl=True)
+        array where last two rows are \nabla^2 rho and tau = 1/2(\nabla f)^2
+        or (5,N) (with_lapl=False) where the last row is tau = 1/2(\nabla f)^2 
     '''
     xctype = xctype.upper()
     if xctype == 'LDA' or xctype == 'HF':
@@ -265,27 +281,37 @@ def eval_rho2(mol, ao, mo_coeff, mo_occ, non0tab=None, xctype='LDA',
                 #:rho[i] = numpy.einsum('pi,pi->p', c0, c1) * 2 # *2 for +c.c.
                 rho[i] = _contract_rho(c0, c1) * 2
         else: # meta-GGA
-            # rho[4] = \nabla^2 rho, rho[5] = 1/2 |nabla f|^2
-            rho = numpy.empty((6,ngrids))
+            if with_lapl:
+                # rho[4] = \nabla^2 rho, rho[5] = 1/2 |nabla f|^2
+                rho = numpy.empty((6,ngrids))
+                tau_idx = 5
+            else:
+                rho = numpy.empty((5,ngrids))
+                tau_idx = 4
             c0 = _dot_ao_dm(mol, ao[0], cpos, non0tab, shls_slice, ao_loc)
             #:rho[0] = numpy.einsum('pi,pi->p', c0, c0)
             rho[0] = _contract_rho(c0, c0)
-            rho[5] = 0
+
+            rho[tau_idx] = 0
             for i in range(1, 4):
                 c1 = _dot_ao_dm(mol, ao[i], cpos, non0tab, shls_slice, ao_loc)
                 #:rho[i] = numpy.einsum('pi,pi->p', c0, c1) * 2 # *2 for +c.c.
                 #:rho[5] += numpy.einsum('pi,pi->p', c1, c1)
                 rho[i] = _contract_rho(c0, c1) * 2
                 rho[5] += _contract_rho(c1, c1)
-            XX, YY, ZZ = 4, 7, 9
-            ao2 = ao[XX] + ao[YY] + ao[ZZ]
-            c1 = _dot_ao_dm(mol, ao2, cpos, non0tab, shls_slice, ao_loc)
-            #:rho[4] = numpy.einsum('pi,pi->p', c0, c1)
-            rho[4] = _contract_rho(c0, c1)
-            rho[4] += rho[5]
-            rho[4] *= 2
 
-            rho[5] *= .5
+            if with_lapl:
+                if ao.shape[0] > 4:
+                    XX, YY, ZZ = 4, 7, 9
+                    ao2 = ao[XX] + ao[YY] + ao[ZZ]
+                    c1 = _dot_ao_dm(mol, ao2, cpos, non0tab, shls_slice, ao_loc)
+                    #:rho[4] = numpy.einsum('pi,pi->p', c0, c1)
+                    rho[4] = _contract_rho(c0, c1)
+                    rho[4] += rho[5]
+                    rho[4] *= 2
+                else:
+                    rho[4] = 0
+            rho[tau_idx] *= .5
     else:
         if xctype == 'LDA' or xctype == 'HF':
             rho = numpy.zeros(ngrids)
@@ -313,6 +339,7 @@ def eval_rho2(mol, ao, mo_coeff, mo_occ, non0tab=None, xctype='LDA',
             c0 = _dot_ao_dm(mol, ao[0], cneg, non0tab, shls_slice, ao_loc)
             #:rho[0] -= numpy.einsum('pi,pi->p', c0, c0)
             rho[0] -= _contract_rho(c0, c0)
+
             rho5 = 0
             for i in range(1, 4):
                 c1 = _dot_ao_dm(mol, ao[i], cneg, non0tab, shls_slice, ao_loc)
@@ -320,14 +347,19 @@ def eval_rho2(mol, ao, mo_coeff, mo_occ, non0tab=None, xctype='LDA',
                 #:rho5 += numpy.einsum('pi,pi->p', c1, c1)
                 rho[i] -= _contract_rho(c0, c1) * 2 # *2 for +c.c.
                 rho5 += _contract_rho(c1, c1)
-            XX, YY, ZZ = 4, 7, 9
-            ao2 = ao[XX] + ao[YY] + ao[ZZ]
-            c1 = _dot_ao_dm(mol, ao2, cneg, non0tab, shls_slice, ao_loc)
-            #:rho[4] -= numpy.einsum('pi,pi->p', c0, c1) * 2
-            rho[4] -= _contract_rho(c0, c1) * 2
-            rho[4] -= rho5 * 2
 
-            rho[5] -= rho5 * .5
+            if with_lapl:
+                if ao.shape[0] > 4:
+                    XX, YY, ZZ = 4, 7, 9
+                    ao2 = ao[XX] + ao[YY] + ao[ZZ]
+                    c1 = _dot_ao_dm(mol, ao2, cneg, non0tab, shls_slice, ao_loc)
+                    #:rho[4] -= numpy.einsum('pi,pi->p', c0, c1) * 2
+                    rho[4] -= _contract_rho(c0, c1) * 2
+                    rho[4] -= rho5 * 2
+                else:
+                    rho[4] = 0
+
+            rho[tau_idx] -= rho5 * .5
     return rho
 
 def _vv10nlc(rho, coords, vvrho, vvweight, vvcoords, nlc_pars):
@@ -428,9 +460,8 @@ def eval_mat(mol, ao, weight, rho, vxc,
             3D array of shape (4,N,nao) for GGA
             or (10,N,nao) for meta-GGA.
             N is the number of grids, nao is the number of AO functions.
-            If xctype is GGA, ao[0] is AO value and ao[1:3] are the real space
-            gradients.  If xctype is meta-GGA, ao[4:10] are second derivatives
-            of ao values.
+            If xctype is GGA (MGGA), ao[0] is AO value and ao[1:3] are the real space
+            gradients. ao[4:10] are second derivatives of ao values if applicable.
         weight : 1D array
             Integral weights on grids.
         rho : ([4/6,] ngrids) ndarray
@@ -518,9 +549,7 @@ def eval_mat(mol, ao, weight, rho, vxc,
     if xctype == 'MGGA':
         vlapl, vtau = vxc[2:]
 
-        if vlapl is None:
-            vlapl = 0
-        else:
+        if vlapl is not None:
             if spin != 0:
                 if transpose_for_uks:
                     vlapl = vlapl.T
@@ -530,13 +559,13 @@ def eval_mat(mol, ao, weight, rho, vxc,
             #:aow = numpy.einsum('pi,p->pi', ao2, .5 * weight * vlapl, out=aow)
             aow = _scale_ao(ao2, .5 * weight * vlapl, out=aow)
             mat += _dot_ao_ao(mol, ao[0], aow, non0tab, shls_slice, ao_loc)
-
-        if spin != 0:
-            if transpose_for_uks:
-                vtau = vtau.T
-            vtau = vtau[0]
-        wv = weight * (.25*vtau + vlapl)
-        mat += _tau_dot(mol, ao, ao, wv, non0tab, shls_slice, ao_loc)
+        else:
+            if spin != 0:
+                if transpose_for_uks:
+                    vtau = vtau.T
+                vtau = vtau[0]
+            wv = weight * vtau * .25
+            mat += _tau_dot(mol, ao, ao, wv, non0tab, shls_slice, ao_loc)
 
     return mat + mat.T.conj()
 
@@ -910,7 +939,7 @@ def nr_rks(ni, mol, grids, xc_code, dms, relativity=0, hermi=0,
     elif xctype == 'MGGA':
         if (any(x in xc_code.upper() for x in ('CC06', 'CS', 'BR89', 'MK00'))):
             raise NotImplementedError('laplacian in meta-GGA method')
-        ao_deriv = 2
+        ao_deriv = 1
         for i, rho, ao, mask, weight, vxc in block_loop(ao_deriv):
             wv = _rks_mgga_wv0(rho, vxc, weight)
             #:aow = numpy.einsum('npi,np->pi', ao[:4], wv, out=aow)
@@ -1039,7 +1068,7 @@ def nr_uks(ni, mol, grids, xc_code, dms, relativity=0, hermi=0,
     elif xctype == 'MGGA':
         if (any(x in xc_code.upper() for x in ('CC06', 'CS', 'BR89', 'MK00'))):
             raise NotImplementedError('laplacian in meta-GGA method')
-        ao_deriv = 2
+        ao_deriv = 1
         for i, rho, ao, mask, weight, vxc in block_loop(ao_deriv):
             wva, wvb = _uks_mgga_wv0(rho, vxc, weight)
             #:aow = numpy.einsum('npi,np->pi', ao[:4], wva, out=aow)
@@ -1190,7 +1219,7 @@ def nr_rks_fxc(ni, mol, grids, xc_code, dm0, dms, relativity=0, hermi=0,
         raise NotImplementedError('NLC')
 
     elif xctype == 'MGGA':
-        ao_deriv = 2
+        ao_deriv = 1
         aow = None
         for i, _rho0, rho1, ao, mask, weight, _vxc, _fxc in block_loop(ao_deriv):
             wv = _rks_mgga_wv1(_rho0, rho1, _vxc, _fxc, weight)
@@ -1317,7 +1346,7 @@ def nr_rks_fxc_st(ni, mol, grids, xc_code, dm0, dms_alpha, relativity=0, singlet
         raise NotImplementedError('NLC')
 
     elif xctype == 'MGGA':
-        ao_deriv = 2
+        ao_deriv = 1
         aow = None
         p1 = 0
         for ao, mask, weight, coords \
@@ -1634,7 +1663,7 @@ def nr_uks_fxc(ni, mol, grids, xc_code, dm0, dms, relativity=0, hermi=0,
         raise NotImplementedError('NLC')
 
     elif xctype == 'MGGA':
-        ao_deriv = 2
+        ao_deriv = 1
         aow = None
         for i, _rho0, rho1, ao, mask, weight, _vxc, _fxc in block_loop(ao_deriv):
             wva, wvb = _uks_mgga_wv1(_rho0, rho1, _vxc, _fxc, weight)
@@ -2359,9 +2388,7 @@ def cache_xc_kernel(ni, mol, grids, xc_code, mo_coeff, mo_occ, spin=0,
     DFT hessian module etc.
     '''
     xctype = ni._xc_type(xc_code)
-    if xctype == 'MGGA':
-        ao_deriv = 2
-    elif xctype == 'GGA':
+    if xctype in ('GGA', 'MGGA'):
         ao_deriv = 1
     elif xctype == 'NLC':
         raise NotImplementedError('NLC')
@@ -2440,7 +2467,7 @@ class _NumIntMixin(lib.StreamObject):
             ao = self.eval_ao(mol, coords, deriv=deriv, non0tab=non0, out=buf)
             yield ao, non0, weight, coords
 
-    def _gen_rho_evaluator(self, mol, dms, hermi=0):
+    def _gen_rho_evaluator(self, mol, dms, hermi=0, with_lapl=True):
         if getattr(dms, 'mo_coeff', None) is not None:
             #TODO: test whether dm.mo_coeff matching dm
             mo_coeff = dms.mo_coeff
@@ -2452,7 +2479,7 @@ class _NumIntMixin(lib.StreamObject):
             ndms = len(mo_occ)
             def make_rho(idm, ao, non0tab, xctype):
                 return self.eval_rho2(mol, ao, mo_coeff[idm], mo_occ[idm],
-                                      non0tab, xctype)
+                                      non0tab, xctype, with_lapl=with_lapl)
         else:
             if isinstance(dms, numpy.ndarray) and dms.ndim == 2:
                 dms = [dms]
@@ -2462,7 +2489,8 @@ class _NumIntMixin(lib.StreamObject):
             nao = dms[0].shape[0]
             ndms = len(dms)
             def make_rho(idm, ao, non0tab, xctype):
-                return self.eval_rho(mol, ao, dms[idm], non0tab, xctype, hermi=1)
+                return self.eval_rho(mol, ao, dms[idm], non0tab, xctype,
+                                     hermi=1, with_lapl=with_lapl)
         return make_rho, ndms, nao
 
 ####################
@@ -2564,13 +2592,15 @@ class NumInt(_NumIntMixin):
         return make_mask(mol, coords, relativity, shls_slice, verbose)
 
     @lib.with_doc(eval_rho.__doc__)
-    def eval_rho(self, mol, ao, dm, non0tab=None, xctype='LDA', hermi=0, verbose=None):
-        return eval_rho(mol, ao, dm, non0tab, xctype, hermi, verbose)
+    def eval_rho(self, mol, ao, dm, non0tab=None, xctype='LDA', hermi=0,
+                 with_lapl=True, verbose=None):
+        return eval_rho(mol, ao, dm, non0tab, xctype, hermi, with_lapl, verbose)
 
     @lib.with_doc(eval_rho2.__doc__)
     def eval_rho2(self, mol, ao, mo_coeff, mo_occ, non0tab=None, xctype='LDA',
-                  verbose=None):
-        return eval_rho2(mol, ao, mo_coeff, mo_occ, non0tab, xctype, verbose)
+                  with_lapl=True, verbose=None):
+        return eval_rho2(mol, ao, mo_coeff, mo_occ, non0tab, xctype, with_lapl,
+                         verbose)
 
 _NumInt = NumInt
 

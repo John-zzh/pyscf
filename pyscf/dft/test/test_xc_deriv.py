@@ -250,6 +250,23 @@ class KnownValues(unittest.TestCase):
         v1 = np.einsum('axg,byg,axbyczg->czg', rho1, rho1, v1)
         self.assertAlmostEqual(abs(v1 - ref).max(), 0, 12)
 
+    def test_ud2ts(self):
+        c = np.array([[.5,  .5],    # vrho = (va + vb) / 2
+                      [.5, -.5]])   # vs   = (va - vb) / 2
+        np.random.seed(8)
+        v_ud = np.random.rand(2,4,7)
+        f_ud = np.random.rand(2,4,2,4,7)
+        k_ud = np.random.rand(2,4,2,4,2,4,7)
+        v_ts = np.einsum('ra,axg->rxg', c, v_ud)
+        f_ts = np.einsum('ra,axbyg->rxbyg', c, f_ud)
+        f_ts = np.einsum('sb,rxbyg->rxsyg', c, f_ts)
+        k_ts = np.einsum('ra,axbyczg->rxbyczg', c, k_ud)
+        k_ts = np.einsum('sb,rxbyczg->rxsyczg', c, k_ts)
+        k_ts = np.einsum('tc,rxsyczg->rxsytzg', c, k_ts)
+        self.assertAlmostEqual(abs(xc_deriv.ud2ts(v_ud) - v_ts).max(), 0, 12)
+        self.assertAlmostEqual(abs(xc_deriv.ud2ts(f_ud) - f_ts).max(), 0, 12)
+        self.assertAlmostEqual(abs(xc_deriv.ud2ts(k_ud) - k_ts).max(), 0, 12)
+
 if __name__ == "__main__":
     print("Test xc_deriv")
     unittest.main()

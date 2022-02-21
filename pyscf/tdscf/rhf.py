@@ -143,6 +143,7 @@ def get_ab(mf, mo_energy=None, mo_coeff=None, mo_occ=None):
         b -= numpy.einsum('jaib->iajb', eri_mo[:nocc,nocc:,:nocc,nocc:]) * hyb
 
     if _response_functions._is_dft_object(mf):
+        from pyscf.dft import xc_deriv
         ni = mf._numint
         ni.libxc.test_deriv_order(mf.xc, 2, raise_error=True)
         if getattr(mf, 'nlc', '') != '':
@@ -181,34 +182,41 @@ def get_ab(mf, mo_energy=None, mo_coeff=None, mo_occ=None):
                     in ni.block_loop(mol, mf.grids, nao, ao_deriv, max_memory):
                 rho = make_rho(0, ao, mask, xctype)
                 vxc, fxc = ni.eval_xc(mf.xc, rho, 0, deriv=2)[1:3]
-                vgamma = vxc[1]
-                frho, frhogamma, fgg = fxc[:3]
-
+                fxc = xc_deriv.transform_fxc(rho, vxc, fxc, xctype, spin=0)
+                wfxc = fxc * weight
                 rho_o = lib.einsum('xrp,pi->xri', ao, orbo)
                 rho_v = lib.einsum('xrp,pi->xri', ao, orbv)
                 rho_ov = numpy.einsum('xri,ra->xria', rho_o, rho_v[0])
                 rho_ov[1:4] += numpy.einsum('ri,xra->xria', rho_o[0], rho_v[1:4])
-                # sigma1 ~ \nabla(\rho_\alpha+\rho_\beta) dot \nabla(|b><j|) z_{bj}
-                sigma1 = numpy.einsum('xr,xria->ria', rho[1:4], rho_ov[1:4])
-
-                w_ov = numpy.empty_like(rho_ov)
-                w_ov[0]  = numpy.einsum('r,ria->ria', frho, rho_ov[0])
-                w_ov[0] += numpy.einsum('r,ria->ria', 2*frhogamma, sigma1)
-                f_ov = numpy.einsum('r,ria->ria', 4*fgg, sigma1)
-                f_ov+= numpy.einsum('r,ria->ria', 2*frhogamma, rho_ov[0])
-                w_ov[1:] = numpy.einsum('ria,xr->xria', f_ov, rho[1:4])
-                w_ov[1:]+= numpy.einsum('r,xria->xria', 2*vgamma, rho_ov[1:4])
-                w_ov *= weight[:,None,None]
-                iajb = lib.einsum('xria,xrjb->iajb', rho_ov, w_ov) * 2
+                w_ov = numpy.einsum('xyr,xria->yria', wfxc, rho_ov)
+                iajb = lib.einsum('xria,xrjb->iajb', w_ov, rho_ov) * 2
                 a += iajb
                 b += iajb
 
         elif xctype == 'HF':
             pass
+
         elif xctype == 'NLC':
             raise NotImplementedError('NLC')
+
         elif xctype == 'MGGA':
-            raise NotImplementedError('meta-GGA')
+            ao_deriv = 1
+            for ao, mask, weight, coords \
+                    in ni.block_loop(mol, mf.grids, nao, ao_deriv, max_memory):
+                rho = make_rho(0, ao, mask, xctype)
+                vxc, fxc = ni.eval_xc(mf.xc, rho, 0, deriv=2)[1:3]
+                fxc = xc_deriv.transform_fxc(rho, vxc, fxc, xctype, spin=0)
+                wfxc = fxc * weight
+                rho_o = lib.einsum('xrp,pi->xri', ao, orbo)
+                rho_v = lib.einsum('xrp,pi->xri', ao, orbv)
+                rho_ov = numpy.einsum('xri,ra->xria', rho_o, rho_v[0])
+                rho_ov[1:4] += numpy.einsum('ri,xra->xria', rho_o[0], rho_v[1:4])
+                tau_ov = numpy.einsum('xri,xra->ria', rho_o[1:4], rho_v[1:4]) * .5
+                rho_ov = numpy.vstack([rho_ov, tau_ov[numpy.newaxis]])
+                w_ov = numpy.einsum('xyr,xria->yria', wfxc, rho_ov)
+                iajb = lib.einsum('xria,xrjb->iajb', w_ov, rho_ov) * 2
+                a += iajb
+                b += iajb
 
     else:
         add_hf_(a, b)

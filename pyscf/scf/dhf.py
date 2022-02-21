@@ -719,6 +719,8 @@ class DHF(hf.SCF):
         mf.converged = False
         return mf
 
+    to_ks = to_dks
+
 UHF = UDHF = DHF
 
 

@@ -926,6 +926,19 @@ def newton(mf):
             gen_g_hop = gen_g_hop_rhf
         return SecondOrderRHF(mf)
 
+def remove_soscf(mf):
+    '''Remove the SOSCF decorator'''
+    if not isinstance(mf, _CIAH_SOSCF):
+        return mf
+
+    for cls in mf.__class__.__mro__:
+        if not issubclass(cls, _CIAH_SOSCF):
+            break
+    mf = mf.view(cls)
+    if hasattr(mf, '_scf'):
+        delattr(mf, '_scf')
+    return mf
+
 SVD_TOL = getattr(__config__, 'soscf_newton_ah_effective_svd_tol', 1e-5)
 def _effective_svd(a, tol=SVD_TOL):
     w = numpy.linalg.svd(a)[1]

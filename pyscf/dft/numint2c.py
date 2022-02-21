@@ -37,10 +37,12 @@ def gks_mcol_vxc(ni, mol, grids, xc_code, dms, relativity=0, hermi=0,
     shls_slice = (0, mol.nbas)
     ao_loc = mol.ao_loc_nr()
 
-    make_rho, nset, n2c = ni._gen_rho_evaluator(mol, dms, hermi)
+    # Ignore density laplacian for mcfun
+    with_lapl = ni.collinear[0] != 'm'
+    make_rho, nset, n2c = ni._gen_rho_evaluator(mol, dms, hermi, with_lapl)
     nao = n2c // 2
 
-    nelec = np.zeros((2,nset))
+    nelec = np.zeros(nset)
     excsum = np.zeros(nset)
     vmat = np.zeros((nset,n2c,n2c), dtype=np.complex128)
 
@@ -62,9 +64,10 @@ def gks_mcol_vxc(ni, mol, grids, xc_code, dms, relativity=0, hermi=0,
             for i in range(nset):
                 rho = make_rho(i, ao, mask, xctype)
                 if ni.collinear[0] == 'm':
-                    exc, vxc = mcfun.eval_xc_eff(fn_eval_xc, rho, deriv=1,
-                                                 spin_samples=ni.spin_samples,
-                                                 max_workers=nproc)[:2]
+                    exc, vxc = mcfun.eval_xc_eff(
+                        fn_eval_xc, rho, deriv=1, spin_samples=ni.spin_samples,
+                        collinear_threshold=ni.collinear_thrd,
+                        collinear_samples=ni.collinear_samples, workers=nproc)[:2]
                 else:
                     exc, vxc = ni.eval_xc(xc_code, rho, spin=1,
                                           relativity=relativity, deriv=1,
@@ -85,7 +88,7 @@ def gks_mcol_vxc(ni, mol, grids, xc_code, dms, relativity=0, hermi=0,
     vmat = vmat + vmat.conj().transpose(0,2,1)
     if isinstance(dms, np.ndarray) and dms.ndim == 2:
         vmat = vmat[0]
-        nelec = nelec.reshape(2)
+        nelec = nelec[0]
         excsum = excsum[0]
     return nelec, excsum, vmat
 
@@ -96,12 +99,14 @@ def gks_mcol_fxc(ni, mol, grids, xc_code, dm0, dms, relativity=0, hermi=0,
     shls_slice = (0, mol.nbas)
     ao_loc = mol.ao_loc_nr()
 
+    # Ignore density laplacian for mcfun
+    with_lapl = ni.collinear[0] != 'm'
     if rho0 is None and (xctype != 'LDA' or fxc is None):
-        make_rho0 = ni._gen_rho_evaluator(mol, dm0, 1)[0]
+        make_rho0 = ni._gen_rho_evaluator(mol, dm0, 1, with_lapl)[0]
     else:
         make_rho0 = None
 
-    make_rho1, nset, n2c = ni._gen_rho_evaluator(mol, dms, hermi)
+    make_rho1, nset, n2c = ni._gen_rho_evaluator(mol, dms, hermi, with_lapl)
     nao = n2c // 2
     vmat = np.zeros((nset,n2c,n2c), dtype=np.complex128)
 
@@ -130,9 +135,10 @@ def gks_mcol_fxc(ni, mol, grids, xc_code, dm0, dms, relativity=0, hermi=0,
                 _rho0 = make_rho0(0, ao, mask, xctype)
 
             if fxc is None:
-                _fxc = mcfun.eval_xc_eff(fn_eval_xc, _rho0, deriv=2,
-                                         spin_samples=ni.spin_samples,
-                                         max_workers=nproc)[1:3]
+                _fxc = mcfun.eval_xc_eff(
+                    fn_eval_xc, _rho0, deriv=2, spin_samples=ni.spin_samples,
+                    collinear_threshold=ni.collinear_thrd,
+                    collinear_samples=ni.collinear_samples, workers=nproc)[2]
             else:
                 _fxc = fxc[:,:,:,:,p0:p1]
 
@@ -262,26 +268,27 @@ def _mcol_mgga_vxc_mat(mol, ao, weight, rho, vxc, mask, shls_slice, ao_loc):
     '''Vxc matrix of multi-collinear MGGA'''
     wv = weight * vxc
     wv[:,0] *= .5
-    wv[:,5] *= .25
+    tau_idx = 4
+    wv[:,tau_idx] *= .25
     wr, wmx, wmy, wmz = wv
 
     aow = None
     aow = _scale_ao(ao, wmx[:4], out=aow)  # Mx
     matba = _dot_ao_ao(mol, ao[0], aow, mask, shls_slice, ao_loc)
-    matba += _tau_dot(mol, ao, ao, wmx[5], mask, shls_slice, ao_loc)
+    matba += _tau_dot(mol, ao, ao, wmx[tau_idx], mask, shls_slice, ao_loc)
 
     aow = _scale_ao(ao, wmy[:4], out=aow)  # My
     tmp = _dot_ao_ao(mol, ao[0], aow, mask, shls_slice, ao_loc)
-    tmp += _tau_dot(mol, ao, ao, wmx[5], mask, shls_slice, ao_loc)
+    tmp += _tau_dot(mol, ao, ao, wmx[tau_idx], mask, shls_slice, ao_loc)
     matba = matba + tmp * 1j
     matab = matba.conj().T
 
     aow = _scale_ao(ao, wr[:4]+wmz[:4], out=aow)  # Mz
     mataa = _dot_ao_ao(mol, ao[0], aow, mask, shls_slice, ao_loc)
-    mataa += _tau_dot(mol, ao, ao, wr[5]+wmz[5], mask, shls_slice, ao_loc)
+    mataa += _tau_dot(mol, ao, ao, wr[tau_idx]+wmz[tau_idx], mask, shls_slice, ao_loc)
     aow = _scale_ao(ao, wr[:4]-wmz[:4], out=aow)  # Mz
     matbb = _dot_ao_ao(mol, ao[0], aow, mask, shls_slice, ao_loc)
-    matbb += _tau_dot(mol, ao, ao, wr[5]-wmz[5], mask, shls_slice, ao_loc)
+    matbb += _tau_dot(mol, ao, ao, wr[tau_idx]-wmz[tau_idx], mask, shls_slice, ao_loc)
 
     mat = np.bmat([[mataa, matab], [matba, matbb]])
     return np.asarray(mat)
@@ -340,12 +347,15 @@ class NumInt2C(numint._NumIntMixin):
     #   'ncol' (non-collinear)
     #   'mcol' (multi-collinear)
     collinear = getattr(__config__, 'dft_numint_RnumInt_collinear', 'col')
-    spin_samples = getattr(__config__, 'dft_numint_RnumInt_spin_samples', 14)
+    spin_samples = getattr(__config__, 'dft_numint_RnumInt_spin_samples', 770)
+    collinear_thrd = getattr(__config__, 'dft_numint_RnumInt_collinear_thrd', 0.99)
+    collinear_samples = getattr(__config__, 'dft_numint_RnumInt_collinear_samples', 200)
 
     def __init__(self):
         self.omega = None  # RSH paramter
 
-    def eval_rho(self, mol, ao, dm, non0tab=None, xctype='LDA', hermi=0, verbose=None):
+    def eval_rho(self, mol, ao, dm, non0tab=None, xctype='LDA', hermi=0,
+                 with_lapl=True, verbose=None):
         '''Calculate the electron density for LDA functional and the density
         derivatives for GGA functional in the framework of 2-component basis.
         '''
@@ -376,7 +386,12 @@ class NumInt2C(numint._NumIntMixin):
                 rho_m[:,i] = _rho2x2_to_rho_m(_contract_rho2x2((ao[i], ao[i]), c0))
                 rho_m[:,i] *= 2  # *2 for +c.c. corresponding to |dx ao> dm < ao|
         else: # meta-GGA
-            rho_m = np.zeros((4, 6, ngrids))
+            if with_lapl:
+                rho_m = np.zeros((4, 6, ngrids))
+                tau_idx = 5
+            else:
+                rho_m = np.zeros((4, 5, ngrids))
+                tau_idx = 4
             c0a = _dot_ao_dm(mol, ao[0], dm[:nao], non0tab, shls_slice, ao_loc)
             c0b = _dot_ao_dm(mol, ao[0], dm[nao:], non0tab, shls_slice, ao_loc)
             c0 = (c0a, c0b)
@@ -387,14 +402,16 @@ class NumInt2C(numint._NumIntMixin):
                 c1a = _dot_ao_dm(mol, ao[i], dm[:nao], non0tab, shls_slice, ao_loc)
                 c1b = _dot_ao_dm(mol, ao[i], dm[nao:], non0tab, shls_slice, ao_loc)
                 tmp = _contract_rho2x2((ao[i], ao[i]), (c1a, c1b))
-                rho_m[:,5] += _rho2x2_to_rho_m(tmp)
-            # TODO: rho_m[:,4] = \nabla^2 rho
+                rho_m[:,tau_idx] += _rho2x2_to_rho_m(tmp)
+            if with_lapl:
+                # TODO: rho_m[:,4] = \nabla^2 rho
+                pass
             # tau = 1/2 (\nabla f)^2
-            rho_m[:,5] *= .5
+            rho_m[:,tau_idx] *= .5
         return rho_m
 
     def eval_rho2(self, mol, ao, mo_coeff, mo_occ, non0tab=None, xctype='LDA',
-                  verbose=None):
+                  with_lapl=True, verbose=None):
         '''Calculate the electron density for LDA functional and the density
         derivatives for GGA functional in the framework of 2-component basis.
         '''
@@ -402,7 +419,7 @@ class NumInt2C(numint._NumIntMixin):
             # TODO:
             dm = np.dot(mo_coeff * mo_occ, mo_coeff.conj().T)
             hermi = 1
-            return self.eval_rho(mol, ao, dm, non0tab, xctype, 1, verbose)
+            return self.eval_rho(mol, ao, dm, non0tab, xctype, 1, with_lapl, verbose)
 
         if mo_coeff.dtype == np.double:
             nao = ao.shape[-1]
@@ -415,7 +432,8 @@ class NumInt2C(numint._NumIntMixin):
         else:
             dm = np.dot(mo_coeff * mo_occ, mo_coeff.conj().T)
             hermi = 1
-            rho = self.eval_rho(mol, dm, ao, dm, non0tab, xctype, hermi, verbose)
+            rho = self.eval_rho(mol, dm, ao, dm, non0tab, xctype, hermi,
+                                with_lapl, verbose)
         mx, my, mz = None
         return rho, mx, my, mz
 
@@ -425,9 +443,7 @@ class NumInt2C(numint._NumIntMixin):
         DFT hessian module etc.
         '''
         xctype = self._xc_type(xc_code)
-        if xctype == 'MGGA':
-            ao_deriv = 2
-        elif xctype == 'GGA':
+        if xctype in ('GGA', 'MGGA'):
             ao_deriv = 1
         elif xctype == 'NLC':
             raise NotImplementedError('NLC')
@@ -442,13 +458,15 @@ class NumInt2C(numint._NumIntMixin):
             for ao, mask, weight, coords \
                     in self.block_loop(mol, grids, nao, ao_deriv, max_memory):
                 # rhoa and rhob have to be real
-                rho.append(self.eval_rho(mol, ao, dm, mask, xctype))
+                rho.append(self.eval_rho(mol, ao, dm, mask, xctype,
+                                         with_lapl=False))
             rho = np.hstack(rho)
             fn_eval_xc = self.mcfun_eval_xc_wrapper(xc_code)
             nproc = lib.num_threads()
-            vxc, fxc = mcfun.eval_xc_eff(fn_eval_xc, rho, deriv=2,
-                                         spin_samples=self.spin_samples,
-                                         max_workers=nproc)[1:3]
+            vxc, fxc = mcfun.eval_xc_eff(
+                fn_eval_xc, rho, deriv=2, spin_samples=self.spin_samples,
+                collinear_threshold=self.collinear_thrd,
+                collinear_samples=self.collinear_samples, workers=nproc)[1:3]
         else:
             dm_a = dm[:nao,:nao].real.copy()
             dm_b = dm[nao:,nao:].real.copy()
