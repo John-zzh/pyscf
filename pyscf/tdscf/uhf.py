@@ -92,8 +92,8 @@ def gen_tda_operation(mf, fock_ao=None, wfnsym=None):
 
         za = zs[:,:nocca*nvira].reshape(-1,nocca,nvira)
         zb = zs[:,nocca*nvira:].reshape(-1,noccb,nvirb)
-        dmova = lib.einsum('xov,po,qv->xpq', za, orboa, orbva.conj())
-        dmovb = lib.einsum('xov,po,qv->xpq', zb, orbob, orbvb.conj())
+        dmova = lib.einsum('xov,qv,po->xpq', za, orbva.conj(), orboa)
+        dmovb = lib.einsum('xov,qv,po->xpq', zb, orbvb.conj(), orbob)
 
         v1ao = vresp(numpy.asarray((dmova,dmovb)))
 
@@ -603,8 +603,10 @@ class TDA(TDMixin):
 
     singlet = None
 
-    def gen_vind(self, mf):
-        '''Compute Ax'''
+    def gen_vind(self, mf=None):
+        '''Generate function to compute Ax'''
+        if mf is None:
+            mf = self._scf
         return gen_tda_hop(mf, wfnsym=self.wfnsym)
 
     def init_guess(self, mf, nstates=None, wfnsym=None):
@@ -756,17 +758,17 @@ def gen_tdhf_operation(mf, fock_ao=None, singlet=True, wfnsym=None):
         ya = ys[:,:nocca*nvira].reshape(nz,nocca,nvira)
         yb = ys[:,nocca*nvira:].reshape(nz,noccb,nvirb)
         # dms = AX + BY
-        dmsa  = lib.einsum('xov,po,qv->xpq', xa, orboa, orbva.conj())
+        dmsa  = lib.einsum('xov,qv,po->xpq', xa, orbva.conj(), orboa)
+        dmsb  = lib.einsum('xov,qv,po->xpq', xb, orbvb.conj(), orbob)
         dmsa += lib.einsum('xov,pv,qo->xpq', ya, orbva, orboa.conj())
-        dmsb  = lib.einsum('xov,po,qv->xpq', xb, orbob, orbvb.conj())
         dmsb += lib.einsum('xov,pv,qo->xpq', yb, orbvb, orbob.conj())
 
         v1ao = vresp(numpy.asarray((dmsa,dmsb)))
 
         v1aov = lib.einsum('xpq,po,qv->xov', v1ao[0], orboa.conj(), orbva)
+        v1avo = lib.einsum('xpq,qo,pv->xov', v1ao[0], orboa, orbva.conj())
         v1bov = lib.einsum('xpq,po,qv->xov', v1ao[1], orbob.conj(), orbvb)
-        v1avo = lib.einsum('xpq,pv,qo->xov', v1ao[0], orbva.conj(), orboa)
-        v1bvo = lib.einsum('xpq,pv,qo->xov', v1ao[1], orbvb.conj(), orbob)
+        v1bvo = lib.einsum('xpq,qo,pv->xov', v1ao[1], orbob, orbvb.conj())
 
         v1ov = xs * e_ia  # AX
         v1vo = ys * e_ia  # AY
@@ -788,7 +790,9 @@ class TDHF(TDMixin):
     singlet = None
 
     @lib.with_doc(gen_tdhf_operation.__doc__)
-    def gen_vind(self, mf):
+    def gen_vind(self, mf=None):
+        if mf is None:
+            mf = self._scf
         return gen_tdhf_operation(mf, singlet=self.singlet, wfnsym=self.wfnsym)
 
     def init_guess(self, mf, nstates=None, wfnsym=None):

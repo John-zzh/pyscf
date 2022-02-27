@@ -20,6 +20,7 @@
 Generate SCF response functions
 '''
 
+import warnings
 import numpy
 from pyscf import lib
 from pyscf.lib import logger
@@ -292,7 +293,13 @@ def _gen_dhf_response(mf, mo_coeff=None, mo_occ=None,
 
 
 def _is_dft_object(mf):
-    return getattr(mf, 'xc', None) is not None and hasattr(mf, '_numint')
+    try:
+        from pyscf.dft import KohnShamDFT
+        return isinstance(mf, KohnShamDFT)
+    except (ImportError, IOError):
+        if getattr(mf, 'xc', None) is not None and hasattr(mf, '_numint'):
+            raise RuntimeError('Failed to import dft module. mf looks like a dft object')
+        return False
 
 
 hf.RHF.gen_response = _gen_rhf_response

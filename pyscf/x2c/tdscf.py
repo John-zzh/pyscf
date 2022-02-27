@@ -69,10 +69,11 @@ def get_ab(mf, mo_energy=None, mo_coeff=None, mo_occ=None):
         eri_mo = ao2mo.kernel(mol, [orbo, mo, mo, mo], intor='int2e_spinor')
         eri_mo = eri_mo.reshape(nocc,nmo,nmo,nmo)
 
-        a += numpy.einsum('iabj->iajb', eri_mo[:nocc,nocc:,nocc:,:nocc])
-        a -= numpy.einsum('ijba->iajb', eri_mo[:nocc,:nocc,nocc:,nocc:]) * hyb
-        b += numpy.einsum('iajb->iajb', eri_mo[:nocc,nocc:,:nocc,nocc:])
-        b -= numpy.einsum('jaib->iajb', eri_mo[:nocc,nocc:,:nocc,nocc:]) * hyb
+        a = a + numpy.einsum('iabj->iajb', eri_mo[:nocc,nocc:,nocc:,:nocc])
+        a = a - numpy.einsum('ijba->iajb', eri_mo[:nocc,:nocc,nocc:,nocc:]) * hyb
+        b = b + numpy.einsum('iajb->iajb', eri_mo[:nocc,nocc:,:nocc,nocc:])
+        b = b - numpy.einsum('jaib->iajb', eri_mo[:nocc,nocc:,:nocc,nocc:]) * hyb
+        return a, b
 
     if isinstance(mf, dft.KohnShamDFT):
         from pyscf.dft import xc_deriv, mcfun
@@ -86,24 +87,26 @@ def get_ab(mf, mo_energy=None, mo_coeff=None, mo_occ=None):
 
         omega, alpha, hyb = ni.rsh_and_hybrid_coeff(mf.xc, mol.spin)
 
-        add_hf_(a, b, hyb)
+        a, b = add_hf_(a, b, hyb)
+
+        if ni.collinear[0] == 'm':  # mcol
+            fn_eval_xc = ni.mcfun_eval_xc_wrapper(mf.xc)
+            nproc = lib.num_threads()
 
         xctype = ni._xc_type(mf.xc)
         dm0 = mf.make_rdm1(mo_coeff, mo_occ)
-        make_rho = ni._gen_rho_evaluator(mol, dm0, hermi=1)[0]
         mem_now = lib.current_memory()[0]
         max_memory = max(2000, mf.max_memory*.8-mem_now)
 
         def get_mo_value(ao):
             ao_a, ao_b = ao
-            c1 = .5 / lib.param.LIGHT_SPEED
-            if aoLa.ndim == 2:
-                mo_a = lib.einsum('rp,pi->ri', ao_a, mo_)
-                mo_b = lib.einsum('rp,pi->ri', ao_b, mo_)
+            if ao_a.ndim == 2:
+                mo_a = lib.einsum('rp,pi->ri', ao_a, mo)
+                mo_b = lib.einsum('rp,pi->ri', ao_b, mo)
                 return mo_a[:,:nocc], mo_a[:,nocc:], mo_b[:,:nocc], mo_b[:,nocc:]
             else:
-                mo_a = lib.einsum('xrp,pi->xri', ao_a, mo_)
-                mo_b = lib.einsum('xrp,pi->xri', ao_b, mo_)
+                mo_a = lib.einsum('xrp,pi->xri', ao_a, mo)
+                mo_b = lib.einsum('xrp,pi->xri', ao_b, mo)
                 return mo_a[:,:,:nocc], mo_a[:,:,nocc:], mo_b[:,:,:nocc], mo_b[:,:,nocc:]
 
         if xctype == 'LDA':
@@ -111,20 +114,20 @@ def get_ab(mf, mo_energy=None, mo_coeff=None, mo_occ=None):
             for ao, mask, weight, coords \
                     in ni.block_loop(mol, mf.grids, nao, ao_deriv, max_memory):
                 if ni.collinear[0] == 'm':
-                    rho = ni.eval_rho(mol, ao, dm0, mask, xctype, with_lapl=False)
+                    rho = ni.eval_rho(mol, ao, dm0, mask, xctype, hermi=1, with_lapl=False)
                     fxc = mcfun.eval_xc_eff(fn_eval_xc, rho, deriv=2,
                                             spin_samples=ni.spin_samples,
-                                            max_workers=nproc)[2]
-                    wr, wmx, wmy, wmz = weight * fxc
+                                            workers=nproc)[2]
+                    wr, wmx, wmy, wmz = weight * fxc.reshape(4,4,-1)
                     mo_oa, mo_va, mo_ob, mo_vb = get_mo_value(ao)
                     rho_ov_aa = numpy.einsum('ri,ra->ria', mo_oa.conj(), mo_va)
                     rho_ov_ab = numpy.einsum('ri,ra->ria', mo_oa.conj(), mo_vb)
                     rho_ov_ba = numpy.einsum('ri,ra->ria', mo_ob.conj(), mo_va)
                     rho_ov_bb = numpy.einsum('ri,ra->ria', mo_ob.conj(), mo_vb)
-                    rho_vo_aa = rhoLov_aa.conj()
-                    rho_vo_ab = rhoLov_ba.conj()
-                    rho_vo_ba = rhoLov_ab.conj()
-                    rho_vo_bb = rhoLov_bb.conj()
+                    rho_vo_aa = rho_ov_aa.conj()
+                    rho_vo_ab = rho_ov_ba.conj()
+                    rho_vo_ba = rho_ov_ab.conj()
+                    rho_vo_bb = rho_ov_bb.conj()
                     w_ov  = (wmx+wmy*1j)[:,:,None,None] * rho_ov_ba
                     w_ov += (wmx-wmy*1j)[:,:,None,None] * rho_ov_ab
                     w_ov += (wr+wmz)[:,:,None,None] * rho_ov_aa
@@ -139,12 +142,10 @@ def get_ab(mf, mo_energy=None, mo_coeff=None, mo_occ=None):
                     b += lib.einsum('ria,rjb->iajb', wr_ov+wmz_ov    , rho_ov_aa)
                     b += lib.einsum('ria,rjb->iajb', wr_ov-wmz_ov    , rho_ov_bb)
                 elif ni.collinear[0] == 'c':
-                    rho0a = numint.eval_rho(mol, ao, dm0a, mask, xctype)
-                    rho0b = numint.eval_rho(mol, ao, dm0b, mask, xctype)
-                    rho = (rho0a, rho0b)
+                    rho = ni.eval_rho(mol, ao, dm0, mask, xctype, hermi=1)
                     vxc, fxc = ni.eval_xc(mf.xc, rho, 1, deriv=2)[1:3]
                     fxc = xc_deriv.transform_fxc(rho, vxc, fxc, xctype, spin=1)
-                    wv_a, wv_b = weight * fxc
+                    wv_a, wv_b = weight * fxc.reshape(2,2,-1)
                     mo_oa, mo_va, mo_ob, mo_vb = get_mo_value(ao)
                     rho_ov_a = numpy.einsum('ri,ra->ria', mo_oa.conj(), mo_va)
                     rho_ov_b = numpy.einsum('ri,ra->ria', mo_ob.conj(), mo_vb)
@@ -165,10 +166,10 @@ def get_ab(mf, mo_energy=None, mo_coeff=None, mo_occ=None):
             for ao, mask, weight, coords \
                     in ni.block_loop(mol, mf.grids, nao, ao_deriv, max_memory):
                 if ni.collinear[0] == 'm':
-                    rho = ni.eval_rho(mol, ao, dm0, mask, xctype, with_lapl=False)
+                    rho = ni.eval_rho(mol, ao, dm0, mask, xctype, hermi=1, with_lapl=False)
                     fxc = mcfun.eval_xc_eff(fn_eval_xc, rho, deriv=2,
                                             spin_samples=ni.spin_samples,
-                                            max_workers=nproc)[2]
+                                            workers=nproc)[2]
                     wr, wmx, wmy, wmz = weight * fxc
                     mo_oa, mo_va, mo_ob, mo_vb = get_mo_value(ao)
                     rho_ov_aa = numpy.einsum('ri,xra->xria', mo_oa[0].conj(), mo_va)
@@ -197,9 +198,7 @@ def get_ab(mf, mo_energy=None, mo_coeff=None, mo_occ=None):
                     b += lib.einsum('xria,xrjb->iajb', wr_ov+wmz_ov    , rho_ov_aa)
                     b += lib.einsum('xria,xrjb->iajb', wr_ov-wmz_ov    , rho_ov_bb)
                 elif ni.collinear[0] == 'c':
-                    rho0a = numint.eval_rho(mol, ao, dm0a, mask, xctype)
-                    rho0b = numint.eval_rho(mol, ao, dm0b, mask, xctype)
-                    rho = (rho0a, rho0b)
+                    rho = ni.eval_rho(mol, ao, dm0, mask, xctype, hermi=1)
                     vxc, fxc = ni.eval_xc(mf.xc, rho, 1, deriv=2)[1:3]
                     fxc = xc_deriv.transform_fxc(rho, vxc, fxc, xctype, spin=1)
                     wv_a, wv_b = weight * fxc
@@ -231,10 +230,10 @@ def get_ab(mf, mo_energy=None, mo_coeff=None, mo_occ=None):
             for ao, mask, weight, coords \
                     in ni.block_loop(mol, mf.grids, nao, ao_deriv, max_memory):
                 if ni.collinear[0] == 'm':
-                    rho = ni.eval_rho(mol, ao, dm0, mask, xctype, with_lapl=False)
+                    rho = ni.eval_rho(mol, ao, dm0, mask, xctype, hermi=1, with_lapl=False)
                     fxc = mcfun.eval_xc_eff(fn_eval_xc, rho, deriv=2,
                                             spin_samples=ni.spin_samples,
-                                            max_workers=nproc)[2]
+                                            workers=nproc)[2]
                     wr, wmx, wmy, wmz = weight * fxc
                     mo_oa, mo_va, mo_ob, mo_vb = get_mo_value(ao)
                     rho_ov_aa = numpy.einsum('ri,xra->xria', mo_oa[0].conj(), mo_va)
@@ -271,9 +270,7 @@ def get_ab(mf, mo_energy=None, mo_coeff=None, mo_occ=None):
                     b += lib.einsum('xria,xrjb->iajb', wr_ov+wmz_ov    , rho_ov_aa)
                     b += lib.einsum('xria,xrjb->iajb', wr_ov-wmz_ov    , rho_ov_bb)
                 elif ni.collinear[0] == 'c':
-                    rho0a = numint.eval_rho(mol, ao, dm0a, mask, xctype)
-                    rho0b = numint.eval_rho(mol, ao, dm0b, mask, xctype)
-                    rho = (rho0a, rho0b)
+                    rho = ni.eval_rho(mol, ao, dm0, mask, xctype, hermi=1)
                     vxc, fxc = ni.eval_xc(mf.xc, rho, 1, deriv=2)[1:3]
                     fxc = xc_deriv.transform_fxc(rho, vxc, fxc, xctype, spin=1)
                     wv_a, wv_b = weight * fxc
@@ -299,7 +296,7 @@ def get_ab(mf, mo_energy=None, mo_coeff=None, mo_occ=None):
                     raise NotImplementedError(ni.collinear)
 
     else:
-        add_hf_(a, b)
+        a, b = add_hf_(a, b)
 
     return a, b
 

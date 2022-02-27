@@ -70,6 +70,8 @@ def eval_xc_eff(func, rho_tm, deriv=1, spin_samples=770,
     * [exc, vxc, fxc] if deriv = 2
     '''
     assert deriv < 3
+    if rho_tm.dtype != np.double:
+        raise RuntimeError('rho and m must be real')
 
     if workers == 1:
         return _eval_xc_lebedev(func, rho_tm, deriv, spin_samples,
@@ -158,8 +160,6 @@ def eval_xc_collinear_spin(func, rho_tm, deriv, spin_samples):
     if deriv > 0:
         vxc = xc_orig[1].reshape(2, nvar, ngrids)
         vxc_eff = np.vstack((vxc[:1], np.einsum('xg,rxg->rxg', vxc[1], omega)))
-        if rho_tm.ndim == 2:
-            vxc_eff = vxc_eff[:,0]
 
     if deriv > 1:
         # spin-conserve part
@@ -185,9 +185,6 @@ def eval_xc_collinear_spin(func, rho_tm, deriv, spin_samples):
             fxc_eff[i,:,i] += fxc_sf
         tmp = np.einsum('xyg,rxg->rxyg', fxc_sf, omega)
         fxc_eff[1:,:,1:] -= np.einsum('rxyg,syg->rxsyg', tmp, omega)
-
-        if rho_tm.ndim == 2:
-            fxc_eff = fxc_eff[:,0,:,0]
 
     ret = [exc_eff]
     if deriv > 0:
@@ -250,7 +247,8 @@ def _eval_xc_lebedev(func, rho_tm, deriv, spin_samples,
         rho, s = _project_spin_paxis(rho_tm.reshape(4, nvar, ngrids)[:,0])
         cs_idx = np.where(s >= rho * collinear_threshold)[0]
         if cs_idx.size > 0:
-            xc_cs = eval_xc_collinear_spin(func, rho_tm, deriv, collinear_samples)
+            xc_cs = eval_xc_collinear_spin(func, rho_tm[...,cs_idx], deriv,
+                                           collinear_samples)
             exc_eff[...,cs_idx] = xc_cs[0]
             if deriv > 0:
                 vxc_eff[...,cs_idx] = xc_cs[1]

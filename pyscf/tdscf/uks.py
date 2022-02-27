@@ -50,7 +50,9 @@ class CasidaTDDFT(TDDFT, TDA):
 
     init_guess = TDA.init_guess
 
-    def get_vind(self, mf):
+    def gen_vind(self, mf=None):
+        if mf is None:
+            mf = self._scf
         wfnsym = self.wfnsym
 
         mol = mf.mol
@@ -136,7 +138,7 @@ class CasidaTDDFT(TDDFT, TDA):
             self.nstates = nstates
         log = logger.Logger(self.stdout, self.verbose)
 
-        vind, hdiag = self.get_vind(self._scf)
+        vind, hdiag = self.gen_vind(self._scf)
         precond = self.get_precond(hdiag)
 
         if x0 is None:

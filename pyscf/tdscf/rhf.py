@@ -95,7 +95,7 @@ def gen_tda_operation(mf, fock_ao=None, singlet=True, wfnsym=None):
             zs[:,sym_forbid] = 0
 
         # *2 for double occupancy
-        dmov = lib.einsum('xov,po,qv->xpq', zs*2, orbo, orbv.conj())
+        dmov = lib.einsum('xov,qv,po->xpq', zs*2, orbv.conj(), orbo)
         v1ao = vresp(dmov)
         v1ov = lib.einsum('xpq,po,qv->xov', v1ao, orbo.conj(), orbv)
         v1ov += lib.einsum('xqs,sp->xqp', zs, fvv)
@@ -716,7 +716,7 @@ class TDMixin(lib.StreamObject):
         self._scf.reset(mol)
         return self
 
-    def gen_vind(self, mf):
+    def gen_vind(self, mf=None):
         raise NotImplementedError
 
     @lib.with_doc(get_ab.__doc__)
@@ -780,8 +780,10 @@ class TDA(TDMixin):
             excited state.  (X,Y) are normalized to 1/2 in RHF/RKS methods and
             normalized to 1 for UHF/UKS methods. In the TDA calculation, Y = 0.
     '''
-    def gen_vind(self, mf):
-        '''Compute Ax'''
+    def gen_vind(self, mf=None):
+        '''Generate function to compute Ax'''
+        if mf is None:
+            mf = self._scf
         return gen_tda_hop(mf, singlet=self.singlet, wfnsym=self.wfnsym)
 
     def init_guess(self, mf, nstates=None, wfnsym=None):
@@ -917,12 +919,12 @@ def gen_tdhf_operation(mf, fock_ao=None, singlet=True, wfnsym=None):
         xs, ys = xys.transpose(1,0,2,3)
         # dms = AX + BY
         # *2 for double occupancy
-        dms  = lib.einsum('xov,po,qv->xpq', xs*2, orbo, orbv.conj())
+        dms  = lib.einsum('xov,qv,po->xpq', xs*2, orbv.conj(), orbo)
         dms += lib.einsum('xov,pv,qo->xpq', ys*2, orbv, orbo.conj())
 
         v1ao = vresp(dms)
         v1ov = lib.einsum('xpq,po,qv->xov', v1ao, orbo.conj(), orbv)
-        v1vo = lib.einsum('xpq,pv,qo->xov', v1ao, orbv.conj(), orbo)
+        v1vo = lib.einsum('xpq,qo,pv->xov', v1ao, orbo, orbv.conj())
         v1ov += lib.einsum('xqs,sp->xqp', xs, fvv)  # AX
         v1ov -= lib.einsum('xpr,sp->xsr', xs, foo)  # AX
         v1vo += lib.einsum('xqs,sp->xqp', ys, fvv)  # AY
@@ -962,7 +964,9 @@ class TDHF(TDA):
             normalized to 1 for UHF/UKS methods. In the TDA calculation, Y = 0.
     '''
     @lib.with_doc(gen_tdhf_operation.__doc__)
-    def gen_vind(self, mf):
+    def gen_vind(self, mf=None):
+        if mf is None:
+            mf = self._scf
         return gen_tdhf_operation(mf, singlet=self.singlet, wfnsym=self.wfnsym)
 
     def init_guess(self, mf, nstates=None, wfnsym=None):

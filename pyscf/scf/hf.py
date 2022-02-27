@@ -814,12 +814,15 @@ def get_jk(mol, dm, hermi=1, vhfopt=None, with_j=True, with_k=True, omega=None):
 
     if dm_dtype == numpy.complex128:
         if with_j:
-            vj = vj.reshape(2,-1)
+            vj = vj.reshape((2,) + dm_shape)
             vj = vj[0] + vj[1] * 1j
+        if with_k:
+            vk = vk.reshape((2,) + dm_shape)
+            vk = vk[0] + vk[1] * 1j
+    else:
+        if with_j:
             vj = vj.reshape(dm_shape)
         if with_k:
-            vk = vk.reshape(2,-1)
-            vk = vk[0] + vk[1] * 1j
             vk = vk.reshape(dm_shape)
     return vj, vk
 

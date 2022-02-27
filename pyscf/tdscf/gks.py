@@ -44,7 +44,9 @@ class CasidaTDDFT(TDDFT, TDA):
     '''
     init_guess = TDA.init_guess
 
-    def gen_vind(self, mf):
+    def gen_vind(self, mf=None):
+        if mf is None:
+            mf = self._scf
         wfnsym = self.wfnsym
         mol = mf.mol
         mo_coeff = mf.mo_coeff

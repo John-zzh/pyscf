@@ -25,7 +25,7 @@ from pyscf.tdscf.uhf import TDUHF
 from pyscf.tdscf.ghf import TDGHF
 
 try:
-    from pyscf import dft
+    from pyscf.dft import KohnShamDFT
     from pyscf.tdscf import rks
     from pyscf.tdscf import uks
     from pyscf.tdscf import gks
@@ -38,7 +38,7 @@ except (ImportError, IOError):
 
 
 def TDHF(mf):
-    if getattr(mf, 'xc', None):
+    if isinstance(mf, KohnShamDFT):
         raise RuntimeError('TDHF does not support DFT object %s' % mf)
     mf = mf.remove_soscf()
     if isinstance(mf, scf.rohf.ROHF):
@@ -49,14 +49,14 @@ def TDHF(mf):
 def TDA(mf):
     mf = mf.remove_soscf()
     if isinstance(mf, scf.rohf.ROHF):
-        if isinstance(mf, dft.rks.KohnShamDFT):
+        if isinstance(mf, KohnShamDFT):
             mf = mf.to_uks()
         else:
             mf = mf.to_uhf()
     return mf.TDA()
 
 def TDDFT(mf):
-    if isinstance(mf, dft.rks.KohnShamDFT):
+    if isinstance(mf, KohnShamDFT):
         mf = mf.remove_soscf()
         if isinstance(mf, scf.rohf.ROHF):
             mf = mf.to_uks()
@@ -73,7 +73,7 @@ def RPA(mf):
 def dRPA(mf):
     mf = mf.remove_soscf()
     if isinstance(mf, scf.rohf.ROHF):
-        if isinstance(mf, dft.rks.KohnShamDFT):
+        if isinstance(mf, KohnShamDFT):
             mf = mf.to_uks()
         else:
             mf = mf.to_uhf()
@@ -82,7 +82,7 @@ def dRPA(mf):
 def dTDA(mf):
     mf = mf.remove_soscf()
     if isinstance(mf, scf.rohf.ROHF):
-        if isinstance(mf, dft.rks.KohnShamDFT):
+        if isinstance(mf, KohnShamDFT):
             mf = mf.to_uks()
         else:
             mf = mf.to_uhf()

@@ -95,7 +95,7 @@ def gen_tda_operation(mf, fock_ao=None, wfnsym=None):
 
         dmov = lib.einsum('xov,qv,po->xpq', zs, orbv.conj(), orbo)
         v1ao = vresp(dmov)
-        v1ov = lib.einsum('xpq,qv,po->xov', v1ao, orbv, orbo.conj())
+        v1ov = lib.einsum('xpq,po,qv->xov', v1ao, orbo.conj(), orbv)
         v1ov += lib.einsum('xqs,sp->xqp', zs, fvv)
         v1ov -= lib.einsum('xpr,sp->xsr', zs, foo)
         if wfnsym is not None and mol.symmetry:
@@ -114,10 +114,10 @@ def get_ab(mf, mo_energy=None, mo_coeff=None, mo_occ=None):
     if mo_energy is None: mo_energy = mf.mo_energy
     if mo_coeff is None: mo_coeff = mf.mo_coeff
     if mo_occ is None: mo_occ = mf.mo_occ
-    assert mo_coeff.dtype == numpy.double
 
     mol = mf.mol
-    nao, nmo = mo_coeff.shape
+    nmo = mo_occ.size
+    nao = mol.nao
     occidx = numpy.where(mo_occ==1)[0]
     viridx = numpy.where(mo_occ==0)[0]
     orbv = mo_coeff[:,viridx]
@@ -132,21 +132,27 @@ def get_ab(mf, mo_energy=None, mo_coeff=None, mo_occ=None):
     nmo = nocc + nvir
 
     e_ia = lib.direct_sum('a-i->ia', mo_energy[viridx], mo_energy[occidx])
-    a = numpy.diag(e_ia.ravel()).reshape(nocc,nvir,nocc,nvir)
+    a = numpy.diag(e_ia.ravel()).reshape(nocc,nvir,nocc,nvir).astype(mo_coeff.dtype)
     b = numpy.zeros_like(a)
 
     def add_hf_(a, b, hyb=1):
-        eri_mo_aa  = ao2mo.general(mol, [orboa,moa,moa,moa], compact=False)
-        eri_mo_aa += ao2mo.general(mol, [orbob,mob,mob,mob], compact=False)
-        eri_mo_aa = eri_mo_aa.reshape(nocc,nmo,nmo,nmo)
-        eri_mo  = ao2mo.general(mol, [orboa,moa,mob,mob], compact=False)
-        eri_mo += ao2mo.general(mol, [orbob,mob,moa,moa], compact=False)
-        eri_mo = eri_mo.reshape(nocc,nmo,nmo,nmo)
-        eri_mo += eri_mo_aa
-        a += numpy.einsum('iabj->iajb', eri_mo   [:nocc,nocc:,nocc:,:nocc])
-        a -= numpy.einsum('ijba->iajb', eri_mo_aa[:nocc,:nocc,nocc:,nocc:]) * hyb
-        b += numpy.einsum('iajb->iajb', eri_mo   [:nocc,nocc:,:nocc,nocc:])
-        b -= numpy.einsum('jaib->iajb', eri_mo_aa[:nocc,nocc:,:nocc,nocc:]) * hyb
+        if mo_coeff.dtype == numpy.double:
+            eri_mo  = ao2mo.general(mol, [orboa,moa,moa,moa], compact=False)
+            eri_mo += ao2mo.general(mol, [orbob,mob,mob,mob], compact=False)
+            eri_mo += ao2mo.general(mol, [orboa,moa,mob,mob], compact=False)
+            eri_mo += ao2mo.general(mol, [orbob,mob,moa,moa], compact=False)
+            eri_mo = eri_mo.reshape(nocc,nmo,nmo,nmo)
+        else:
+            eri_ao = mol.intor('int2e').reshape([nao]*4)
+            eri_mo_a = lib.einsum('pqrs,pi,qj->ijrs', eri_ao, orboa.conj(), moa)
+            eri_mo_a+= lib.einsum('pqrs,pi,qj->ijrs', eri_ao, orbob.conj(), mob)
+            eri_mo = lib.einsum('ijrs,rk,sl->ijkl', eri_mo_a, moa.conj(), moa)
+            eri_mo+= lib.einsum('ijrs,rk,sl->ijkl', eri_mo_a, mob.conj(), mob)
+        a += numpy.einsum('iabj->iajb', eri_mo[:nocc,nocc:,nocc:,:nocc])
+        a -= numpy.einsum('ijba->iajb', eri_mo[:nocc,:nocc,nocc:,nocc:]) * hyb
+        b += numpy.einsum('iajb->iajb', eri_mo[:nocc,nocc:,:nocc,nocc:])
+        b -= numpy.einsum('jaib->iajb', eri_mo[:nocc,nocc:,:nocc,nocc:]) * hyb
+        return a, b
 
     if isinstance(mf, dft.KohnShamDFT):
         from pyscf.dft import xc_deriv, mcfun
@@ -160,11 +166,11 @@ def get_ab(mf, mo_energy=None, mo_coeff=None, mo_occ=None):
 
         omega, alpha, hyb = ni.rsh_and_hybrid_coeff(mf.xc, mol.spin)
 
-        if ni.collinear[0] == 'm':  # mcol
-            fn_eval_xc = ni.mcfun_eval_xc_wrapper(xc_code)
-            nproc = lib.num_threads()
+        a, b = add_hf_(a, b, hyb)
 
-        add_hf_(a, b, hyb)
+        if ni.collinear[0] == 'm':  # mcol
+            fn_eval_xc = ni.mcfun_eval_xc_wrapper(mf.xc)
+            nproc = lib.num_threads()
 
         xctype = ni._xc_type(mf.xc)
         dm0 = mf.make_rdm1(mo_coeff, mo_occ)
@@ -188,11 +194,11 @@ def get_ab(mf, mo_energy=None, mo_coeff=None, mo_occ=None):
             for ao, mask, weight, coords \
                     in ni.block_loop(mol, mf.grids, nao, ao_deriv, max_memory):
                 if ni.collinear[0] == 'm':
-                    rho = ni.eval_rho(mol, ao, dm0, mask, xctype, with_lapl=False)
+                    rho = ni.eval_rho(mol, ao, dm0, mask, xctype, hermi=1, with_lapl=False)
                     fxc = mcfun.eval_xc_eff(fn_eval_xc, rho, deriv=2,
                                             spin_samples=ni.spin_samples,
-                                            max_workers=nproc)[2]
-                    wr, wmx, wmy, wmz = weight * fxc
+                                            workers=nproc)[2]
+                    wr, wmx, wmy, wmz = weight * fxc.reshape(4,4,-1)
                     mo_oa, mo_va, mo_ob, mo_vb = get_mo_value(ao)
                     rho_ov_aa = numpy.einsum('ri,ra->ria', mo_oa.conj(), mo_va)
                     rho_ov_ab = numpy.einsum('ri,ra->ria', mo_oa.conj(), mo_vb)
@@ -216,12 +222,12 @@ def get_ab(mf, mo_energy=None, mo_coeff=None, mo_occ=None):
                     b += lib.einsum('ria,rjb->iajb', wr_ov+wmz_ov    , rho_ov_aa)
                     b += lib.einsum('ria,rjb->iajb', wr_ov-wmz_ov    , rho_ov_bb)
                 elif ni.collinear[0] == 'c':
-                    rho0a = numint.eval_rho(mol, ao, dm0a, mask, xctype)
-                    rho0b = numint.eval_rho(mol, ao, dm0b, mask, xctype)
+                    rho0a = numint.eval_rho(mol, ao, dm0a, mask, xctype, hermi=1)
+                    rho0b = numint.eval_rho(mol, ao, dm0b, mask, xctype, hermi=1)
                     rho = (rho0a, rho0b)
                     vxc, fxc = ni.eval_xc(mf.xc, rho, 1, deriv=2)[1:3]
                     fxc = xc_deriv.transform_fxc(rho, vxc, fxc, xctype, spin=1)
-                    wv_a, wv_b = weight * fxc
+                    wv_a, wv_b = weight * fxc.reshape(2,2,-1)
                     mo_oa, mo_va, mo_ob, mo_vb = get_mo_value(ao)
                     rho_ov_a = numpy.einsum('ri,ra->ria', mo_oa.conj(), mo_va)
                     rho_ov_b = numpy.einsum('ri,ra->ria', mo_ob.conj(), mo_vb)
@@ -242,10 +248,10 @@ def get_ab(mf, mo_energy=None, mo_coeff=None, mo_occ=None):
             for ao, mask, weight, coords \
                     in ni.block_loop(mol, mf.grids, nao, ao_deriv, max_memory):
                 if ni.collinear[0] == 'm':
-                    rho = ni.eval_rho(mol, ao, dm0, mask, xctype, with_lapl=False)
+                    rho = ni.eval_rho(mol, ao, dm0, mask, xctype, hermi=1, with_lapl=False)
                     fxc = mcfun.eval_xc_eff(fn_eval_xc, rho, deriv=2,
                                             spin_samples=ni.spin_samples,
-                                            max_workers=nproc)[2]
+                                            workers=nproc)[2]
                     wr, wmx, wmy, wmz = weight * fxc
                     mo_oa, mo_va, mo_ob, mo_vb = get_mo_value(ao)
                     rho_ov_aa = numpy.einsum('ri,xra->xria', mo_oa[0].conj(), mo_va)
@@ -274,8 +280,8 @@ def get_ab(mf, mo_energy=None, mo_coeff=None, mo_occ=None):
                     b += lib.einsum('xria,xrjb->iajb', wr_ov+wmz_ov    , rho_ov_aa)
                     b += lib.einsum('xria,xrjb->iajb', wr_ov-wmz_ov    , rho_ov_bb)
                 elif ni.collinear[0] == 'c':
-                    rho0a = numint.eval_rho(mol, ao, dm0a, mask, xctype)
-                    rho0b = numint.eval_rho(mol, ao, dm0b, mask, xctype)
+                    rho0a = numint.eval_rho(mol, ao, dm0a, mask, xctype, hermi=1)
+                    rho0b = numint.eval_rho(mol, ao, dm0b, mask, xctype, hermi=1)
                     rho = (rho0a, rho0b)
                     vxc, fxc = ni.eval_xc(mf.xc, rho, 1, deriv=2)[1:3]
                     fxc = xc_deriv.transform_fxc(rho, vxc, fxc, xctype, spin=1)
@@ -286,7 +292,7 @@ def get_ab(mf, mo_energy=None, mo_coeff=None, mo_occ=None):
                     rho_ov_a[1:4] += numpy.einsum('ri,xra->xria', mo_oa[0].conj(), mo_va[1:4])
                     rho_ov_b[1:4] += numpy.einsum('ri,xra->xria', mo_ob[0].conj(), mo_vb[1:4])
                     rho_vo_a = rho_ov_a.conj()
-                    rho_vo_b = rho_vo_a.conj()
+                    rho_vo_b = rho_ov_b.conj()
                     w_ov  = numpy.einsum('xsyr,xria->syria', wv_a, rho_ov_a)
                     w_ov += numpy.einsum('xsyr,xria->syria', wv_b, rho_ov_b)
                     wa_ov, wb_ov = w_ov
@@ -308,10 +314,10 @@ def get_ab(mf, mo_energy=None, mo_coeff=None, mo_occ=None):
             for ao, mask, weight, coords \
                     in ni.block_loop(mol, mf.grids, nao, ao_deriv, max_memory):
                 if ni.collinear[0] == 'm':
-                    rho = ni.eval_rho(mol, ao, dm0, mask, xctype, with_lapl=False)
+                    rho = ni.eval_rho(mol, ao, dm0, mask, xctype, hermi=1, with_lapl=False)
                     fxc = mcfun.eval_xc_eff(fn_eval_xc, rho, deriv=2,
                                             spin_samples=ni.spin_samples,
-                                            max_workers=nproc)[2]
+                                            workers=nproc)[2]
                     wr, wmx, wmy, wmz = weight * fxc
                     mo_oa, mo_va, mo_ob, mo_vb = get_mo_value(ao)
                     rho_ov_aa = numpy.einsum('ri,xra->xria', mo_oa[0].conj(), mo_va)
@@ -348,8 +354,8 @@ def get_ab(mf, mo_energy=None, mo_coeff=None, mo_occ=None):
                     b += lib.einsum('xria,xrjb->iajb', wr_ov+wmz_ov    , rho_ov_aa)
                     b += lib.einsum('xria,xrjb->iajb', wr_ov-wmz_ov    , rho_ov_bb)
                 elif ni.collinear[0] == 'c':
-                    rho0a = numint.eval_rho(mol, ao, dm0a, mask, xctype)
-                    rho0b = numint.eval_rho(mol, ao, dm0b, mask, xctype)
+                    rho0a = numint.eval_rho(mol, ao, dm0a, mask, xctype, hermi=1)
+                    rho0b = numint.eval_rho(mol, ao, dm0b, mask, xctype, hermi=1)
                     rho = (rho0a, rho0b)
                     vxc, fxc = ni.eval_xc(mf.xc, rho, 1, deriv=2)[1:3]
                     fxc = xc_deriv.transform_fxc(rho, vxc, fxc, xctype, spin=1)
@@ -364,7 +370,7 @@ def get_ab(mf, mo_energy=None, mo_coeff=None, mo_occ=None):
                     rho_ov_a = numpy.vstack([rho_ov_a, tau_ov_a[numpy.newaxis]])
                     rho_ov_b = numpy.vstack([rho_ov_b, tau_ov_b[numpy.newaxis]])
                     rho_vo_a = rho_ov_a.conj()
-                    rho_vo_b = rho_vo_a.conj()
+                    rho_vo_b = rho_ov_b.conj()
                     w_ov  = numpy.einsum('xsyr,xria->syria', wv_a, rho_ov_a)
                     w_ov += numpy.einsum('xsyr,xria->syria', wv_b, rho_ov_b)
                     wa_ov, wb_ov = w_ov
@@ -376,7 +382,7 @@ def get_ab(mf, mo_energy=None, mo_coeff=None, mo_occ=None):
                     raise NotImplementedError(ni.collinear)
 
     else:
-        add_hf_(a, b)
+        a, b = add_hf_(a, b)
 
     return a, b
 
@@ -410,8 +416,10 @@ class TDA(TDMixin):
 
     singlet = None
 
-    def gen_vind(self, mf):
-        '''Compute Ax'''
+    def gen_vind(self, mf=None):
+        '''Generate function to compute Ax'''
+        if mf is None:
+            mf = self._scf
         return gen_tda_hop(mf, wfnsym=self.wfnsym)
 
     def init_guess(self, mf, nstates=None, wfnsym=None):
@@ -573,7 +581,9 @@ class TDHF(TDMixin):
     singlet = None
 
     @lib.with_doc(gen_tdhf_operation.__doc__)
-    def gen_vind(self, mf):
+    def gen_vind(self, mf=None):
+        if mf is None:
+            mf = self._scf
         return gen_tdhf_operation(mf, wfnsym=self.wfnsym)
 
     def init_guess(self, mf, nstates=None, wfnsym=None):
@@ -599,12 +609,12 @@ class TDHF(TDMixin):
         if x0 is None:
             x0 = self.init_guess(self._scf, self.nstates)
 
+        ensure_real = self._scf.mo_coeff.dtype == numpy.double
         def pickeig(w, v, nroots, envs):
             realidx = numpy.where((abs(w.imag) < REAL_EIG_THRESHOLD) &
                                   (w.real > POSTIVE_EIG_THRESHOLD))[0]
             # FIXME: Should the amplitudes be real? It also affects x2c-tdscf
-            return lib.linalg_helper._eigs_cmplx2real(w, v, realidx,
-                                                      real_eigenvectors=False)
+            return lib.linalg_helper._eigs_cmplx2real(w, v, realidx, ensure_real)
 
         self.converged, w, x1 = \
                 lib.davidson_nosym1(vind, x0, precond,

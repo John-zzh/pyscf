@@ -36,11 +36,11 @@ def transform_vxc(rho, vxc, xctype, spin=0):
         * spin polarized
             LDA : [2,1,N]
             GGA : [2,4,N]
-            MGGA: [2,6,N]
+            MGGA: [2,5,N]
         * spin unpolarized
             LDA : [1,N]
             GGA : [4,N]
-            MGGA: [6,N]
+            MGGA: [5,N]
     '''
     rho = np.asarray(rho, order='C')
     if xctype == 'GGA':
@@ -87,11 +87,11 @@ def transform_fxc(rho, vxc, fxc, xctype, spin=0):
         * spin polarized
             LDA : [2,1,2,1,N]
             GGA : [2,4,2,4,N]
-            MGGA: [2,6,2,6,N]
+            MGGA: [2,5,2,5,N]
         * spin unpolarized
             LDA : [1,1,N]
             GGA : [4,4,N]
-            MGGA: [6,6,N]
+            MGGA: [5,5,N]
     '''
     rho = np.asarray(rho, order='C')
     if xctype == 'GGA':
@@ -174,11 +174,11 @@ def transform_kxc(rho, fxc, kxc, xctype, spin=0):
         * spin polarized
             LDA : [2,1,2,1,2,1,N]
             GGA : [2,4,2,4,2,4,N]
-            MGGA: [2,6,2,6,2,6,N]
+            MGGA: [2,5,2,5,2,5,N]
         * spin unpolarized
             LDA : [1,1,1,N]
             GGA : [4,4,4,N]
-            MGGA: [6,6,6,N]
+            MGGA: [5,5,5,N]
     '''
     rho = np.asarray(rho, order='C')
     if xctype == 'GGA':
@@ -345,11 +345,11 @@ def transform_lxc(rho, fxc, kxc, lxc, xctype, spin=0):
         * spin polarized
             LDA : [2,1,2,1,2,1,2,1,N]
             GGA : [2,4,2,4,2,4,2,4,N]
-            MGGA: [2,6,2,6,2,6,2,6,N]
+            MGGA: [2,5,2,5,2,5,2,5,N]
         * spin unpolarized
             LDA : [1,1,1,1,N]
             GGA : [4,4,4,4,N]
-            MGGA: [6,6,6,6,N]
+            MGGA: [5,5,5,5,N]
     '''
     raise NotImplementedError
 
