@@ -29,9 +29,6 @@ from pyscf import __config__
 OUTPUT_THRESHOLD = getattr(__config__, 'tdscf_uhf_get_nto_threshold', 0.3)
 REAL_EIG_THRESHOLD = getattr(__config__, 'tdscf_uhf_TDDFT_pick_eig_threshold', 1e-4)
 
-# Low excitation filter to avoid numerical instability
-POSTIVE_EIG_THRESHOLD = getattr(__config__, 'tdscf_uhf_TDDFT_positive_eig_threshold', 1e-3)
-
 def gen_tda_operation(mf, fock_ao=None):
     '''A x
     '''

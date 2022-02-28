@@ -27,9 +27,6 @@ from pyscf.data import nist
 from pyscf.dft.rks import KohnShamDFT
 from pyscf import __config__
 
-# Low excitation filter to avoid numerical instability
-POSTIVE_EIG_THRESHOLD = getattr(__config__, 'tdscf_rhf_TDDFT_positive_eig_threshold', 1e-3)
-
 
 class TDA(ghf.TDA):
     pass
@@ -123,7 +120,7 @@ class CasidaTDDFT(TDDFT, TDA):
             x0 = self.init_guess(self._scf, self.nstates)
 
         def pickeig(w, v, nroots, envs):
-            idx = numpy.where(w > POSTIVE_EIG_THRESHOLD**2)[0]
+            idx = numpy.where(w > self.positive_eig_threshold)[0]
             return w[idx], v[:,idx], idx
 
         self.converged, w2, x1 = \
@@ -149,7 +146,7 @@ class CasidaTDDFT(TDDFT, TDA):
             norm = numpy.sqrt(1./norm)
             return (x*norm, y*norm)
 
-        idx = numpy.where(w2 > POSTIVE_EIG_THRESHOLD**2)[0]
+        idx = numpy.where(w2 > self.positive_eig_threshold)[0]
         self.e = numpy.sqrt(w2[idx])
         self.xy = [norm_xy(self.e[i], x1[i]) for i in idx]
 

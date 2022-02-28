@@ -38,9 +38,6 @@ OUTPUT_THRESHOLD = getattr(__config__, 'tdscf_rhf_get_nto_threshold', 0.3)
 REAL_EIG_THRESHOLD = getattr(__config__, 'tdscf_rhf_TDDFT_pick_eig_threshold', 1e-4)
 MO_BASE = getattr(__config__, 'MO_BASE', 1)
 
-# Low excitation filter to avoid numerical instability
-POSTIVE_EIG_THRESHOLD = getattr(__config__, 'tdscf_rhf_TDDFT_positive_eig_threshold', 1e-3)
-
 
 def gen_tda_operation(mf, fock_ao=None, singlet=True, wfnsym=None):
     '''Generate function to compute A x
@@ -648,6 +645,8 @@ class TDMixin(lib.StreamObject):
     level_shift = getattr(__config__, 'tdscf_rhf_TDA_level_shift', 0)
     max_space = getattr(__config__, 'tdscf_rhf_TDA_max_space', 50)
     max_cycle = getattr(__config__, 'tdscf_rhf_TDA_max_cycle', 100)
+    # Low excitation filter to avoid numerical instability
+    positive_eig_threshold = getattr(__config__, 'tdscf_rhf_TDDFT_positive_eig_threshold', 1e-3)
 
     def __init__(self, mf):
         self.verbose = mf.verbose
@@ -838,7 +837,7 @@ class TDA(TDMixin):
             x0 = self.init_guess(self._scf, self.nstates)
 
         def pickeig(w, v, nroots, envs):
-            idx = numpy.where(w > POSTIVE_EIG_THRESHOLD**2)[0]
+            idx = numpy.where(w > self.positive_eig_threshold)[0]
             return w[idx], v[:,idx], idx
 
         self.converged, self.e, x1 = \
@@ -995,7 +994,7 @@ class TDHF(TDA):
         # We only need positive eigenvalues
         def pickeig(w, v, nroots, envs):
             realidx = numpy.where((abs(w.imag) < REAL_EIG_THRESHOLD) &
-                                  (w.real > POSTIVE_EIG_THRESHOLD))[0]
+                                  (w.real > self.positive_eig_threshold))[0]
             # If the complex eigenvalue has small imaginary part, both the
             # real part and the imaginary part of the eigenvector can
             # approximately be used as the "real" eigen solutions.
