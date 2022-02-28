@@ -148,7 +148,7 @@ class DKS(KohnShamDFT, dhf.DHF):
 
 UKS = UDKS = DKS
 
-class RDKS(KohnShamDFT, dhf.RDHF):
+class RDKS(DKS, dhf.RDHF):
     '''Kramers restricted Dirac-Kohn-Sham'''
     def __init__(self, mol, xc='LDA,VWN'):
         dhf.RDHF.__init__(self, mol)

@@ -66,12 +66,12 @@ def diagonalize(a, b, nroots=4):
     b_aa = b_aa.reshape((nocc_a*nvir_a,nocc_a*nvir_a))
     b_ab = b_ab.reshape((nocc_a*nvir_a,nocc_b*nvir_b))
     b_bb = b_bb.reshape((nocc_b*nvir_b,nocc_b*nvir_b))
-    a = numpy.bmat([[ a_aa  , a_ab],
-                    [ a_ab.T, a_bb]])
-    b = numpy.bmat([[ b_aa  , b_ab],
-                    [ b_ab.T, b_bb]])
-    h = numpy.bmat([[a        , b       ],
-                    [-b.conj(),-a.conj()]])
+    a = numpy.block([[ a_aa  , a_ab],
+                     [ a_ab.T, a_bb]])
+    b = numpy.block([[ b_aa  , b_ab],
+                     [ b_ab.T, b_bb]])
+    h = numpy.block([[a        , b       ],
+                     [-b.conj(),-a.conj()]])
     e = numpy.linalg.eig(numpy.asarray(h))[0]
     lowest_e = numpy.sort(e[e.real > 0].real)[:nroots]
     lowest_e = lowest_e[lowest_e > 1e-3]

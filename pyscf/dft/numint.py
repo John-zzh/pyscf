@@ -110,7 +110,7 @@ def eval_ao(mol, coords, deriv=0, shls_slice=None,
 def eval_rho(mol, ao, dm, non0tab=None, xctype='LDA', hermi=0, with_lapl=True,
              verbose=None):
     r'''Calculate the electron density for LDA functional, and the density
-    derivatives for GGA functional.
+    derivatives for GGA and MGGA functionals.
 
     Args:
         mol : an instance of :class:`Mole`
@@ -657,26 +657,39 @@ def _scale_ao(ao, wv, out=None):
         ao = ao.T.reshape(1,nao,ngrids)
         wv = wv.reshape(1,ngrids)
 
+    if not ao.flags.c_contiguous:
+        return numpy.einsum('nip,np->pi', ao, wv)
+
+    if ao.dtype == numpy.double:
+        if wv.dtype == numpy.double:
+            fn = libdft.VXC_dscale_ao
+            dtype = numpy.double
+        elif wv.dtype == numpy.complex128:
+            fn = libdft.VXC_dzscale_ao
+            dtype = numpy.complex128
+        else:
+            return numpy.einsum('nip,np->pi', ao, wv)
+    elif ao.dtype == numpy.complex128:
+        if wv.dtype == numpy.double:
+            fn = libdft.VXC_zscale_ao
+            dtype = numpy.complex128
+        elif wv.dtype == numpy.complex128:
+            fn = libdft.VXC_zzscale_ao
+            dtype = numpy.complex128
+        else:
+            return numpy.einsum('nip,np->pi', ao, wv)
+    else:
+        return numpy.einsum('nip,np->pi', ao, wv)
+
     wv = numpy.asarray(wv, order='C')
     comp, nao, ngrids = ao.shape
-    aow = numpy.ndarray((nao,ngrids), dtype=ao.dtype, buffer=out).T
-
-    if not ao.flags.c_contiguous or ao.dtype != wv.dtype:
-        aow = numpy.einsum('nip,np->pi', ao, wv)
-    elif aow.dtype == numpy.double:
-        libdft.VXC_dscale_ao(aow.ctypes.data_as(ctypes.c_void_p),
-                             ao.ctypes.data_as(ctypes.c_void_p),
-                             wv.ctypes.data_as(ctypes.c_void_p),
-                             ctypes.c_int(comp), ctypes.c_int(nao),
-                             ctypes.c_int(ngrids))
-    elif aow.dtype == numpy.complex128:
-        libdft.VXC_zscale_ao(aow.ctypes.data_as(ctypes.c_void_p),
-                             ao.ctypes.data_as(ctypes.c_void_p),
-                             wv.ctypes.data_as(ctypes.c_void_p),
-                             ctypes.c_int(comp), ctypes.c_int(nao),
-                             ctypes.c_int(ngrids))
-    else:
-        aow = numpy.einsum('nip,np->pi', ao, wv)
+    assert wv.shape[0] == comp
+    aow = numpy.ndarray((nao,ngrids), dtype=dtype, buffer=out).T
+    fn(aow.ctypes.data_as(ctypes.c_void_p),
+       ao.ctypes.data_as(ctypes.c_void_p),
+       wv.ctypes.data_as(ctypes.c_void_p),
+       ctypes.c_int(comp), ctypes.c_int(nao),
+       ctypes.c_int(ngrids))
     return aow
 
 def _contract_rho(bra, ket):
@@ -2558,8 +2571,8 @@ class _NumIntMixin(lib.StreamObject):
         return self.libxc.eval_xc(xc_code, rho, spin, relativity, deriv,
                                   omega, verbose)
 
-    def eval_xc_deriv(self, xc_code, rho, deriv=1, spin=0, omega=None,
-                      xctype=None, verbose=None):
+    def eval_xc_eff(self, xc_code, rho, deriv=1, omega=None, xctype=None,
+                    verbose=None):
         r'''Returns the derivative tensor against the density parameters
         [[density_a, (nabla_x)_a, (nabla_y)_a, (nabla_z)_a, tau_a],
          [density_b, (nabla_x)_b, (nabla_y)_b, (nabla_z)_b, tau_b]].
@@ -2569,11 +2582,17 @@ class _NumIntMixin(lib.StreamObject):
         '''
         if omega is None: omega = self.omega
         if xctype is None: xctype = self._xc_type(xc_code)
-        rhop = rho
-        if spin == 1:
-            if rho[0].shape[0] == 5:  # MGGA
-                ngrids = rho[0].shape[1]
-                rhop = np.empty((2, 6, ngrids))
+        rhop = numpy.asarray(rho)
+
+        if xctype == 'LDA':
+            spin_polarized = rhop.ndim == 2
+        else:
+            spin_polarized = rhop.ndim == 3
+
+        if spin_polarized:
+            if rhop.shape[1] == 5:  # MGGA
+                ngrids = rhop.shape[2]
+                rhop = numpy.empty((2, 6, ngrids))
                 rhop[0,:4] = rho[0][:4]
                 rhop[1,:4] = rho[1][:4]
                 rhop[:,4] = 0
@@ -2582,14 +2601,13 @@ class _NumIntMixin(lib.StreamObject):
         else:
             if rho.shape[0] == 5:  # MGGA
                 ngrids = rho.shape[1]
-                rhop = np.empty((6, ngrids))
+                rhop = numpy.empty((6, ngrids))
                 rhop[:4] = rho[:4]
                 rhop[4] = 0
                 rhop[5] = rho[4]
 
-        exc, vxc, fxc, kxc = ni.libxc.eval_xc(xc_code, rhop, spin, 0, deriv,
-                                              omega, verbose)
-
+        exc, vxc, fxc, kxc = self.eval_xc(xc_code, rhop, spin, 0, deriv,
+                                          omega, verbose)
         if deriv > 2:
             kxc = xc_deriv.transform_kxc(rhop, fxc, kxc, xctype, spin)
         if deriv > 1:

@@ -81,8 +81,8 @@ class CasidaTDDFT(TDDFT, TDA):
                 zs = numpy.copy(zs)
                 zs[:,sym_forbid] = 0
 
-            dmov = lib.einsum('xov,ov,po,qv->xpq', zs, d_ia, orbo, orbv)
-            # +cc for A+B and K_{ai,jb} in A == K_{ai,bj} in B
+            dmov = lib.einsum('xov,po,qv->xpq', zs*d_ia, orbo, orbv)
+            # +cc for A+B because K_{ai,jb} in A == K_{ai,bj} in B
             dmov = dmov + dmov.transpose(0,2,1)
 
             v1ao = vresp(dmov)
@@ -168,7 +168,7 @@ def tddft(mf):
     '''Driver to create TDDFT or CasidaTDDFT object'''
     if (not mf._numint.libxc.is_hybrid_xc(mf.xc) and
         # Casida formula can be applied for real orbitals only
-        mf.mo_coeff.dtype == numpy.double):
+        mf.mo_coeff.dtype == numpy.double and mf.collinear[0] != 'm'):
         return CasidaTDDFT(mf)
     else:
         return TDDFT(mf)

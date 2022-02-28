@@ -34,6 +34,7 @@ class TDDFT(dhf.TDHF):
 RPA = TDDKS = TDDFT
 
 from pyscf import dft
-dft.dks.DKS.TDA   = lib.class_as_method(TDA)
-dft.dks.DKS.TDHF  = None
-dft.dks.DKS.TDDFT = lib.class_as_method(TDDFT)
+dft.dks.DKS.TDA   = dft.dks.RDKS.TDA   = lib.class_as_method(TDA)
+dft.dks.DKS.TDHF  = dft.dks.RDKS.TDHF  = None
+dft.dks.DKS.TDDFT = dft.dks.RDKS.TDDFT = lib.class_as_method(TDDFT)
+dft.dks.DKS.CasidaTDDFT = dft.dks.RDKS.CasidaTDDFT = None

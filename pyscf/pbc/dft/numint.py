@@ -365,7 +365,7 @@ def nr_rks(ni, cell, grids, xc_code, dms, spin=0, relativity=0, hermi=1,
                 in ni.block_loop(cell, grids, nao, ao_deriv, kpts, kpts_band, max_memory):
             for i in range(nset):
                 rho = make_rho(i, ao_k2, mask, xctype)
-                exc, vxc = ni.eval_xc_deriv(xc_code, rho, deriv, spin, xctype=xctype)[:2]
+                exc, vxc = ni.eval_xc_eff(xc_code, rho, deriv, xctype=xctype)[:2]
                 if xctype == 'LDA':
                     den = rho*weight
                 else:
@@ -470,7 +470,7 @@ def nr_uks(ni, cell, grids, xc_code, dms, spin=1, relativity=0, hermi=1,
                 rho_a = make_rhoa(i, ao_k2, mask, xctype)
                 rho_b = make_rhob(i, ao_k2, mask, xctype)
                 rho = (rho_a, rho_b)
-                exc, vxc = ni.eval_xc_deriv(xc_code, rho, deriv, spin, xctype=xctype)[:2]
+                exc, vxc = ni.eval_xc_eff(xc_code, rho, deriv, xctype=xctype)[:2]
                 if xctype == 'LDA':
                     dena = rho_a * weight
                     denb = rho_b * weight
@@ -589,7 +589,7 @@ def nr_rks_fxc(ni, cell, grids, xc_code, dm0, dms, relativity=0, hermi=0,
                 in ni.block_loop(cell, grids, nao, ao_deriv, kpts, None, max_memory):
             if fxc is None:
                 _rho = make_rho0(0, ao_k1, mask, xctype)
-                _fxc = ni.eval_xc_deriv(xc_code, _rho, deriv, spin, xctype=xctype)[2]
+                _fxc = ni.eval_xc_eff(xc_code, _rho, deriv, xctype=xctype)[2]
             else:
                 p0, p1 = p1, p1 + weight.size
                 _fxc = fxc[:,:,:,:,p0:p1]
@@ -661,7 +661,7 @@ def nr_rks_fxc_st(ni, cell, grids, xc_code, dm0, dms_alpha, relativity=0, single
             if fxc is None:
                 rho0a = make_rho0(0, ao_k1, mask, xctype) * .5
                 _rho = (rho0a, rho0a)
-                _fxc = ni.eval_xc_deriv(xc_code, _rho, deriv, spin, xctype=xctype)[2]
+                _fxc = ni.eval_xc_eff(xc_code, _rho, deriv, xctype=xctype)[2]
             else:
                 p0, p1 = p1, p1 + weight.size
                 _fxc = fxc[:,:,:,:,p0:p1]
@@ -770,7 +770,7 @@ def nr_uks_fxc(ni, cell, grids, xc_code, dm0, dms, relativity=0, hermi=0,
                 rho0a = make_rho0a(0, ao_k1, mask, xctype)
                 rho0b = make_rho0b(0, ao_k1, mask, xctype)
                 _rho = (rho0a, rho0b)
-                _fxc = ni.eval_xc_deriv(xc_code, _rho, deriv, spin, xctype=xctype)[2]
+                _fxc = ni.eval_xc_eff(xc_code, _rho, deriv, xctype=xctype)[2]
             else:
                 p0, p1 = p1, p1 + weight.size
                 _fxc = fxc[:,:,:,:,p0:p1]
@@ -854,7 +854,7 @@ def cache_xc_kernel(ni, cell, grids, xc_code, mo_coeff, mo_occ, spin=0,
             rhoa.append(ni.eval_rho2(cell, ao_k1, mo_coeff[0], mo_occ[0], mask, xctype))
             rhob.append(ni.eval_rho2(cell, ao_k1, mo_coeff[1], mo_occ[1], mask, xctype))
         rho = numpy.stack([numpy.hstack(rhoa), numpy.hstack(rhob)])
-    vxc, fxc = ni.eval_xc_deriv(xc_code, rho, deriv, spin, xctype=xctype)[1:3]
+    vxc, fxc = ni.eval_xc_eff(xc_code, rho, deriv, xctype=xctype)[1:3]
     return rho, vxc, fxc
 
 
