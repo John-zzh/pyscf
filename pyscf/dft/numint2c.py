@@ -196,7 +196,7 @@ def _gks_mcol_fxc(ni, mol, grids, xc_code, dm0, dms, relativity=0, hermi=0,
                 elif make_rho0 is not None:
                     _rho0 = make_rho0(0, ao, mask, xctype)
 
-                _fxc = eval_xc(xc_code, rho, deriv, xctype=xctype)[2]
+                _fxc = eval_xc(xc_code, _rho0, deriv, xctype=xctype)[2]
             else:
                 _fxc = fxc[:,:,:,:,p0:p1]
 
@@ -576,7 +576,7 @@ class NumInt2C(numint._NumIntMixin):
                 rho.append(self.eval_rho2(mol, ao, mo_coeff, mo_occ, mask, xctype,
                                           with_lapl))
             rho = np.hstack(rho)
-            if ni.collinear[0] == 'm':  # mcol
+            if self.collinear[0] == 'm':  # mcol
                 eval_xc = self.mcfun_eval_xc_adapter(xc_code)
             else:
                 eval_xc = self.eval_xc_eff

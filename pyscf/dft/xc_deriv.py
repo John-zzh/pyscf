@@ -61,17 +61,21 @@ def transform_vxc(rho, vxc, xctype, spin=0):
 
     ngrids = rho.shape[-1]
     if spin == 1:
-        vp = np.empty((2,nvar, ngrids))
-        vp[:,0] = fr
-        if order > 0:
+        if order == 0:
+            vp = fr.reshape(2, nvar, ngrids)
+        else:
+            vp = np.empty((2,nvar, ngrids))
+            vp[:,0] = fr
             #:vp[:,1:4] = np.einsum('abg,bxg->axg', _stack_fg(fg), rho[:,1:4])
             vp[:,1:4] = _stack_fg(fg, rho=rho)
         if order > 1:
             vp[:,4] = ft
     else:
-        vp = np.empty((nvar, ngrids))
-        vp[0] = fr
-        if order > 0:
+        if order == 0:
+            vp = fr.reshape(nvar, ngrids)
+        else:
+            vp = np.empty((nvar, ngrids))
+            vp[0] = fr
             vp[1:4] = 2 * fg * rho[1:4]
         if order > 1:
             vp[4] = ft
@@ -113,10 +117,11 @@ def transform_fxc(rho, vxc, fxc, xctype, spin=0):
 
     ngrids = rho.shape[-1]
     if spin == 1:
-        vp = np.empty((2,nvar, 2,nvar, ngrids)).transpose(1,3,0,2,4)
-        vp[0,0] = _stack_frr(frr)
-
-        if order > 0:
+        if order == 0:
+            vp = _stack_frr(frr).reshape(2,nvar, 2,nvar, ngrids).transpose(1,3,0,2,4)
+        else:
+            vp = np.empty((2,nvar, 2,nvar, ngrids)).transpose(1,3,0,2,4)
+            vp[0,0] = _stack_frr(frr)
             i3 = np.arange(3)
             #:qgg = _stack_fgg(fgg)
             #:qgg = np.einsum('abcdg,axg->xbcdg', qgg, rho[:,1:4])
@@ -149,9 +154,11 @@ def transform_fxc(rho, vxc, fxc, xctype, spin=0):
         vp = vp.transpose(2,0,3,1,4)
 
     else:
-        vp = np.empty((nvar, nvar, ngrids))
-        vp[0,0] = frr
-        if order > 0:
+        if order == 0:
+            vp = frr.reshape(nvar, nvar, ngrids)
+        else:
+            vp = np.empty((nvar, nvar, ngrids))
+            vp[0,0] = frr
             i3 = np.arange(3)
             qgg = 4 * fgg * rho[1:4] * rho[1:4,None]
             qgg[i3,i3] += fg * 2
@@ -202,9 +209,11 @@ def transform_kxc(rho, fxc, kxc, xctype, spin=0):
 
     ngrids = rho.shape[-1]
     if spin == 1:
-        vp = np.empty((2,nvar, 2,nvar, 2,nvar, ngrids)).transpose(1,3,5,0,2,4,6)
-        vp[0,0,0] = _stack_frrr(frrr)
-        if order > 0:
+        if order == 0:
+            vp = _stack_frrr(frrr).reshape(2,nvar, 2,nvar, 2,nvar, ngrids).transpose(1,3,5,0,2,4,6)
+        else:
+            vp = np.empty((2,nvar, 2,nvar, 2,nvar, ngrids)).transpose(1,3,5,0,2,4,6)
+            vp[0,0,0] = _stack_frrr(frrr)
             i3 = np.arange(3)
             #:qggg = _stack_fggg(fggg)
             #:qggg = np.einsum('abcdefg,axg->xbcdefg', qggg, rho[:,1:4])
@@ -246,6 +255,7 @@ def transform_kxc(rho, fxc, kxc, xctype, spin=0):
             #:qggt = np.einsum('xbcdrg,cyg->xybdrg', qggt, rho[:,1:4])
             qggt = _stack_fgg(fggt, axis=0, rho=rho).transpose(1,3,0,2,4,5)
             qgt = _stack_fg(fgt.reshape(3,2,ngrids), axis=0)
+            i3 = np.arange(3)
             qggt[i3,i3] += qgt
             vp[1:4,1:4,4] = qggt
             vp[1:4,4,1:4] = qggt.transpose(0,1,2,4,3,5)
@@ -285,9 +295,11 @@ def transform_kxc(rho, fxc, kxc, xctype, spin=0):
         vp = vp.transpose(3,0,4,1,5,2,6)
 
     else:
-        vp = np.empty((nvar, nvar, nvar, ngrids))
-        vp[0,0,0] = frrr
-        if order > 0:
+        if order == 0:
+            vp = frrr.reshape(nvar, nvar, nvar, ngrids)
+        else:
+            vp = np.empty((nvar, nvar, nvar, ngrids))
+            vp[0,0,0] = frrr
             i3 = np.arange(3)
             qggg = 8 * fggg * rho[1:4] * rho[1:4,None] * rho[1:4,None,None]
             qgg = 4 * fgg * rho[1:4]
@@ -372,6 +384,8 @@ def _stack_fg(fg, axis=0, rho=None, out=None):
     else:
         rho = np.asarray(rho, order='C')
         fg = np.asarray(fg, order='C')
+        if fg.shape[axis] != 3:
+            fg = fg.reshape(fg.shape[:axis] + (3, -1) + fg.shape[axis+1:])
         nvar, ngrids = rho.shape[1:]
         ncounts = int(np.prod(fg.shape[:axis]))
         mcounts = int(np.prod(fg.shape[axis+1:-1]))
@@ -404,8 +418,8 @@ def _stack_fgg(fgg, axis=0, rho=None):
         fgg = fgg.reshape(fgg.shape[:axis] + (6, -1) + fgg.shape[axis+1:])
     slices = [slice(None)] * fgg.ndim
     slices[axis] = [[0, 1, 2], [1, 3, 4], [2, 4, 5]]
-    return _stack_fg(_stack_fg(
-        fgg[tuple(slices)], axis=axis+1, rho=rho), axis=axis, rho=rho)
+    fgg = fgg[tuple(slices)]
+    return _stack_fg(_stack_fg(fgg, axis=axis+1, rho=rho), axis=axis, rho=rho)
 
 def _stack_frrr(frrr, axis=0):
     '''

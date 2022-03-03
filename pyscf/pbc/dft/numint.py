@@ -581,7 +581,6 @@ def nr_rks_fxc(ni, cell, grids, xc_code, dm0, dms, relativity=0, hermi=0,
             make_rho0 = ni._gen_rho_evaluator(cell, dm0, 1)[0]
         shls_slice = (0, cell.nbas)
         ao_loc = cell.ao_loc_nr()
-        spin = 0
         deriv = 2
         vmat = [0] * nset
         p1 = 0
@@ -651,7 +650,6 @@ def nr_rks_fxc_st(ni, cell, grids, xc_code, dm0, dms_alpha, relativity=0, single
             make_rho0 = ni._gen_rho_evaluator(cell, dm0, 1)[0]
         shls_slice = (0, cell.nbas)
         ao_loc = cell.ao_loc_nr()
-        spin = 1
         deriv = 2
         hermi = 0
         vmat = [0] * nset
@@ -758,7 +756,6 @@ def nr_uks_fxc(ni, cell, grids, xc_code, dm0, dms, relativity=0, hermi=0,
 
     shls_slice = (0, cell.nbas)
     ao_loc = cell.ao_loc_nr()
-    spin = 1
     deriv = 2
     vmata = [0] * nset
     vmatb = [0] * nset
@@ -854,7 +851,7 @@ def cache_xc_kernel(ni, cell, grids, xc_code, mo_coeff, mo_occ, spin=0,
             rhoa.append(ni.eval_rho2(cell, ao_k1, mo_coeff[0], mo_occ[0], mask, xctype))
             rhob.append(ni.eval_rho2(cell, ao_k1, mo_coeff[1], mo_occ[1], mask, xctype))
         rho = numpy.stack([numpy.hstack(rhoa), numpy.hstack(rhob)])
-    vxc, fxc = ni.eval_xc_eff(xc_code, rho, deriv, xctype=xctype)[1:3]
+    vxc, fxc = ni.eval_xc_eff(xc_code, rho, deriv=2, xctype=xctype)[1:3]
     return rho, vxc, fxc
 
 
@@ -940,18 +937,16 @@ class NumInt(numint.NumInt):
     def _vxc_mat(self, cell, ao, wv, mask, xctype, shls_slice, ao_loc, hermi):
         return _vxc_mat(cell, ao, wv, mask, xctype, shls_slice, ao_loc, hermi)
 
-def nr_rks_fxc(ni, cell, grids, xc_code, dm0, dms, relativity=0, hermi=0,
+    @lib.with_doc(nr_rks_fxc.__doc__)
+    def nr_fxc(self, cell, grids, xc_code, dm0, dms, spin=0, relativity=0, hermi=0,
                rho0=None, vxc=None, fxc=None, kpts=None, max_memory=2000,
                verbose=None):
-    @lib.with_doc(nr_fxc.__doc__)
-    def nr_fxc(self, mol, grids, xc_code, dm0, dms, spin=0, relativity=0, hermi=0,
-               rho0=None, vxc=None, fxc=None, max_memory=2000, verbose=None):
         if spin == 0:
-            return self.nr_rks_fxc(mol, grids, xc_code, dm0, dms, relativity,
-                                   hermi, rho0, vxc, fxc, max_memory, verbose)
+            return self.nr_rks_fxc(cell, grids, xc_code, dm0, dms, relativity,
+                                   hermi, rho0, vxc, fxc, kpts, max_memory, verbose)
         else:
-            return self.nr_uks_fxc(mol, grids, xc_code, dm0, dms, relativity,
-                                   hermi, rho0, vxc, fxc, max_memory, verbose)
+            return self.nr_uks_fxc(cell, grids, xc_code, dm0, dms, relativity,
+                                   hermi, rho0, vxc, fxc, kpts, max_memory, verbose)
     get_fxc = nr_fxc
 
     def block_loop(self, cell, grids, nao=None, deriv=0, kpt=numpy.zeros(3),

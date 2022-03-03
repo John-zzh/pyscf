@@ -45,14 +45,14 @@ def get_jk(mf, cell=None, dm=None, hermi=0, kpt=None, kpts_band=None,
     dmbb = dms[:,nao:,nao:]
     if with_k:
         if hermi:
-            dms = numpy.stack((dmaa, dmbb, dmab))
+            dms = np.stack((dmaa, dmbb, dmab))
         else:
             dmba = dms[:,nao:,:nao]
-            dms = numpy.stack((dmaa, dmbb, dmab, dmba))
+            dms = np.stack((dmaa, dmbb, dmab, dmba))
         # Note the off-diagonal block breaks the hermitian
         _hermi = 0
     else:
-        dms = numpy.stack((dmaa, dmbb))
+        dms = np.stack((dmaa, dmbb))
         _hermi = 1
 
     j1, k1 = mf.with_df.get_jk(dms, _hermi, kpt, kpts_band, with_j, with_k,

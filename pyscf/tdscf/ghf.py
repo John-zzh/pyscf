@@ -173,8 +173,6 @@ def get_ab(mf, mo_energy=None, mo_coeff=None, mo_occ=None):
 
         xctype = ni._xc_type(mf.xc)
         dm0 = mf.make_rdm1(mo_coeff, mo_occ)
-        dm0a = dm0[:nao,:nao].real.copy()
-        dm0b = dm0[nao:,nao:].real.copy()
         mem_now = lib.current_memory()[0]
         max_memory = max(2000, mf.max_memory*.8-mem_now)
 

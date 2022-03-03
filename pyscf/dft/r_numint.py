@@ -24,7 +24,7 @@ import numpy
 from pyscf import lib
 from pyscf.dft import numint
 from pyscf.dft.numint import _dot_ao_dm, _dot_ao_ao, _scale_ao, _tau_dot, BLKSIZE
-from pyscf.dft.numint2c import _eval_xc_deriv, mcfun_eval_xc_adapter
+from pyscf.dft.numint2c import _eval_xc_eff, mcfun_eval_xc_adapter
 from pyscf.dft import xc_deriv
 from pyscf.dft import mcfun
 from pyscf import __config__
@@ -709,7 +709,7 @@ class RNumInt(numint._NumIntMixin):
     get_vxc = r_vxc = r_vxc
     get_fxc = r_fxc = r_fxc
 
-    eval_xc_eff = _eval_xc_deriv
+    eval_xc_eff = _eval_xc_eff
     mcfun_eval_xc_adapter = mcfun_eval_xc_adapter
 
     def eval_ao(self, mol, coords, deriv=0, with_s=True, shls_slice=None,

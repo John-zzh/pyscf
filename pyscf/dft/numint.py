@@ -2590,6 +2590,7 @@ class _NumIntMixin(lib.StreamObject):
             spin_polarized = rhop.ndim == 3
 
         if spin_polarized:
+            spin = 1
             if rhop.shape[1] == 5:  # MGGA
                 ngrids = rhop.shape[2]
                 rhop = numpy.empty((2, 6, ngrids))
@@ -2599,6 +2600,7 @@ class _NumIntMixin(lib.StreamObject):
                 rhop[0,5] = rho[0][4]
                 rhop[1,5] = rho[1][4]
         else:
+            spin = 0
             if rho.shape[0] == 5:  # MGGA
                 ngrids = rho.shape[1]
                 rhop = numpy.empty((6, ngrids))
@@ -2606,8 +2608,8 @@ class _NumIntMixin(lib.StreamObject):
                 rhop[4] = 0
                 rhop[5] = rho[4]
 
-        exc, vxc, fxc, kxc = self.eval_xc(xc_code, rhop, spin, 0, deriv,
-                                          omega, verbose)
+        exc, vxc, fxc, kxc = self.eval_xc(xc_code, rhop, spin, 0, deriv, omega,
+                                          verbose)
         if deriv > 2:
             kxc = xc_deriv.transform_kxc(rhop, fxc, kxc, xctype, spin)
         if deriv > 1:
