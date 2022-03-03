@@ -302,23 +302,22 @@ def _eval_xc_eff(ni, xc_code, rho, deriv=1, omega=None, xctype=None,
         vxc = xc_deriv.transform_vxc(rhop, vxc, xctype, spin)
     return exc, vxc, fxc, kxc
 
+# To make it callable by multiprocessing
+def __mcfun_fn_eval_xc(ni, xc_code, xctype, rho, deriv):
+    exc, vxc, fxc, kxc = ni.eval_xc_eff(xc_code, rho, deriv, xctype=xctype)
+    if deriv > 0:
+        vxc = xc_deriv.ud2ts(vxc)
+    if deriv > 1:
+        fxc = xc_deriv.ud2ts(fxc)
+    if deriv > 2:
+        kxc = xc_deriv.ud2ts(kxc)
+    return exc, vxc, fxc, kxc
+
 def mcfun_eval_xc_adapter(ni, xc_code):
     '''Wrapper to generate the eval_xc function required by mcfun'''
-
-    def _fn_eval_xc(ni, xc_code, xctype, rho, deriv):
-        exc, vxc, fxc, kxc = ni.eval_xc_eff(xc_code, rho, deriv, xctype=xctype)
-        if deriv > 0:
-            vxc = xc_deriv.ud2ts(vxc)
-        if deriv > 1:
-            fxc = xc_deriv.ud2ts(fxc)
-        if deriv > 2:
-            kxc = xc_deriv.ud2ts(kxc)
-        return exc, vxc, fxc, kxc
-
     xctype = ni._xc_type(xc_code)
-    fn_eval_xc = functools.partial(_fn_eval_xc, ni, xc_code, xctype)
+    fn_eval_xc = functools.partial(__mcfun_fn_eval_xc, ni, xc_code, xctype)
     nproc = lib.num_threads()
-
     def eval_xc_eff(xc_code, rho, deriv=1, omega=None, xctype=None,
                     verbose=None):
         return mcfun.eval_xc_eff(
